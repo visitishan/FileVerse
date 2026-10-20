@@ -1,0 +1,19 @@
+[package]
+name = "fileverse"
+version = "0.1.0"
+description = "A spatial 3D filesystem explorer"
+authors = ["FileVerse"]
+edition = "2021"
+
+[lib]
+name = "fileverse_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
