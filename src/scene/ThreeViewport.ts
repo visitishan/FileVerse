@@ -29,9 +29,11 @@ export class ThreeViewport {
   private static readonly minZoom = 0.72;
   private static readonly maxZoom = 1.6;
   private static readonly zoomStep = 0.08;
-  private static readonly maxOrbit = Math.PI / 5;
-  private static readonly orbitSensitivity = 0.0022;
-  private static readonly depthSensitivity = 0.012;
+  private static readonly minOrbitPitch = -1.42;
+  private static readonly maxOrbitPitch = 1.42;
+  private static readonly defaultOrbitPitch = 0.03;
+  private static readonly wheelOrbitSensitivity = 0.0025;
+  private static readonly dragOrbitSensitivity = 0.005;
   private static readonly depthStep = 1.2;
   private static readonly depthFocusDistance = 8;
   private readonly scene = new THREE.Scene();
@@ -41,10 +43,15 @@ export class ThreeViewport {
   private readonly pointer = new THREE.Vector2();
   private readonly cards: CardHandle[] = [];
   private readonly motions: CardMotion[] = [];
+  private sceneDepthPositions: THREE.Vector3[] = [];
   private readonly clock = new THREE.Clock();
   private readonly reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   private frame = 0;
   private recentClick: RecentClick | null = null;
+  private dragPointerId: number | null = null;
+  private lastDragPoint: THREE.Vector2 | null = null;
+  private dragDistance = 0;
+  private ignoreClickUntil = 0;
   private onActivate: ((nodeId: string, activate: boolean) => void) | null = null;
   private currentDirectoryId: string | null = null;
   private cameraTravelStartedAt = 0;
@@ -52,9 +59,10 @@ export class ThreeViewport {
   private gestureStartZoom = 1;
   private orbitYaw = 0;
   private targetOrbitYaw = 0;
+  private orbitPitch = ThreeViewport.defaultOrbitPitch;
+  private targetOrbitPitch = ThreeViewport.defaultOrbitPitch;
   private depthTravel = 0;
   private targetDepthTravel = 0;
-  private deepestSceneZ = 0;
   private hasSceneItems = false;
   private readonly transitionDuration = 680;
   private readonly resizeObserver: ResizeObserver;
@@ -83,7 +91,10 @@ export class ThreeViewport {
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(host);
+    this.renderer.domElement.addEventListener("pointerdown", this.handlePointerDown);
     this.renderer.domElement.addEventListener("pointermove", this.handlePointerMove);
+    this.renderer.domElement.addEventListener("pointerup", this.handlePointerUp);
+    this.renderer.domElement.addEventListener("pointercancel", this.handlePointerUp);
     this.renderer.domElement.addEventListener("click", this.handleClick);
     this.renderer.domElement.addEventListener("wheel", this.handleWheel, { passive: false });
     this.renderer.domElement.addEventListener("gesturestart", this.handleGestureStart);
@@ -95,13 +106,12 @@ export class ThreeViewport {
   setProjection(projection: SceneProjection, selectedId: string | null, onActivate: (nodeId: string, activate: boolean) => void) {
     this.onActivate = onActivate;
     const enteringDirectory = this.currentDirectoryId !== null && this.currentDirectoryId !== projection.currentDirectoryId;
-    this.deepestSceneZ = projection.items.length
-      ? Math.min(...projection.items.map((item) => item.position.z))
-      : 0;
+    this.sceneDepthPositions = projection.items.map((item) => item.position);
     this.hasSceneItems = projection.items.length > 0;
     if (enteringDirectory) {
       this.setZoomLevel(1);
       this.targetOrbitYaw = 0;
+      this.targetOrbitPitch = ThreeViewport.defaultOrbitPitch;
       this.depthTravel = 0;
       this.targetDepthTravel = 0;
     }
@@ -111,7 +121,7 @@ export class ThreeViewport {
       if (enteringDirectory && !this.reducedMotion) {
         const material = mesh.material as THREE.MeshBasicMaterial;
         const fromPosition = mesh.position.clone();
-        const toPosition = fromPosition.clone().add(new THREE.Vector3(Math.sin(this.orbitYaw) * 4.2, -0.25, Math.cos(this.orbitYaw) * 4.2));
+        const toPosition = fromPosition.clone().addScaledVector(this.orbitDirection(this.orbitYaw, this.orbitPitch), 4.2);
         const scale = mesh.scale.x;
         this.motions.push({ mesh, fromPosition, toPosition, fromScale: scale, toScale: scale * 1.12, fromOpacity: material.opacity, toOpacity: 0, startedAt: now, duration: this.transitionDuration, removeAtEnd: true });
       } else {
@@ -125,6 +135,7 @@ export class ThreeViewport {
       mesh.position.copy(item.position);
       mesh.scale.setScalar(item.scale);
       mesh.rotation.z = item.rotationZ;
+      mesh.userData.layoutRotationZ = item.rotationZ;
       const material = mesh.material as THREE.MeshBasicMaterial;
       material.opacity = item.opacity;
       mesh.userData.nodeId = item.node.id;
@@ -148,7 +159,10 @@ export class ThreeViewport {
   dispose() {
     cancelAnimationFrame(this.frame);
     this.resizeObserver.disconnect();
+    this.renderer.domElement.removeEventListener("pointerdown", this.handlePointerDown);
     this.renderer.domElement.removeEventListener("pointermove", this.handlePointerMove);
+    this.renderer.domElement.removeEventListener("pointerup", this.handlePointerUp);
+    this.renderer.domElement.removeEventListener("pointercancel", this.handlePointerUp);
     this.renderer.domElement.removeEventListener("click", this.handleClick);
     this.renderer.domElement.removeEventListener("wheel", this.handleWheel);
     this.renderer.domElement.removeEventListener("gesturestart", this.handleGestureStart);
@@ -314,6 +328,9 @@ export class ThreeViewport {
     this.orbitYaw = this.reducedMotion
       ? this.targetOrbitYaw
       : this.orbitYaw + (this.targetOrbitYaw - this.orbitYaw) * 0.12;
+    this.orbitPitch = this.reducedMotion
+      ? this.targetOrbitPitch
+      : this.orbitPitch + (this.targetOrbitPitch - this.orbitPitch) * 0.12;
     this.depthTravel = this.reducedMotion
       ? this.targetDepthTravel
       : this.depthTravel + (this.targetDepthTravel - this.depthTravel) * 0.12;
@@ -335,15 +352,51 @@ export class ThreeViewport {
       const base = mesh.userData.baseY ?? mesh.position.y;
       mesh.userData.baseY = base;
       if (!this.reducedMotion) mesh.position.y = base + Math.sin(elapsed * .65 + index * .72) * .035;
+      // Keep card labels legible while the camera orbits past the back side of the scene.
+      mesh.lookAt(this.camera.position);
+      mesh.rotateZ(mesh.userData.layoutRotationZ ?? 0);
     });
     this.renderer.render(this.scene, this.camera);
   };
 
   private handlePointerMove = (event: PointerEvent) => {
     this.updatePointer(event);
+    if (this.dragPointerId === event.pointerId && this.lastDragPoint) {
+      const deltaX = event.clientX - this.lastDragPoint.x;
+      const deltaY = event.clientY - this.lastDragPoint.y;
+      this.lastDragPoint.set(event.clientX, event.clientY);
+      this.dragDistance += Math.abs(deltaX) + Math.abs(deltaY);
+      if (this.dragDistance > 4) {
+        this.recentClick = null;
+        this.orbitBy(-deltaX, deltaY, ThreeViewport.dragOrbitSensitivity);
+      }
+      this.renderer.domElement.style.cursor = this.dragDistance > 4 ? "grabbing" : "grab";
+      return;
+    }
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const hit = this.raycaster.intersectObjects(this.cards.map(({ mesh }) => mesh))[0];
     this.renderer.domElement.style.cursor = hit ? "pointer" : "default";
+  };
+
+  private handlePointerDown = (event: PointerEvent) => {
+    if (event.button !== 0 || this.dragPointerId !== null) return;
+    this.dragPointerId = event.pointerId;
+    this.lastDragPoint = new THREE.Vector2(event.clientX, event.clientY);
+    this.dragDistance = 0;
+    this.renderer.domElement.setPointerCapture(event.pointerId);
+    this.renderer.domElement.style.cursor = "grab";
+  };
+
+  private handlePointerUp = (event: PointerEvent) => {
+    if (this.dragPointerId !== event.pointerId) return;
+    const wasDrag = this.dragDistance > 4;
+    this.dragPointerId = null;
+    this.lastDragPoint = null;
+    if (this.renderer.domElement.hasPointerCapture(event.pointerId)) {
+      this.renderer.domElement.releasePointerCapture(event.pointerId);
+    }
+    if (wasDrag) this.ignoreClickUntil = performance.now() + 300;
+    this.renderer.domElement.style.cursor = "default";
   };
 
   private handleWheel = (event: WheelEvent) => {
@@ -355,19 +408,10 @@ export class ThreeViewport {
       this.setZoomLevel(this.zoomLevel * Math.exp(-deltaY * 0.002));
       return;
     }
-    // A two-finger horizontal trackpad scroll gently orbits the viewpoint.
-    if (Math.abs(deltaX) > 1 && Math.abs(deltaX) > Math.abs(deltaY) * 1.15) {
+    // Two-axis trackpad or wheel input orbits around the spatial field.
+    if (Math.abs(deltaX) > 1 || Math.abs(deltaY) > 1) {
       event.preventDefault();
-      this.targetOrbitYaw = THREE.MathUtils.clamp(
-        this.targetOrbitYaw + deltaX * ThreeViewport.orbitSensitivity,
-        -ThreeViewport.maxOrbit,
-        ThreeViewport.maxOrbit,
-      );
-      return;
-    }
-    if (Math.abs(deltaY) > 1) {
-      event.preventDefault();
-      this.moveThroughDepthBy(deltaY * ThreeViewport.depthSensitivity);
+      this.orbitBy(deltaX, deltaY, ThreeViewport.wheelOrbitSensitivity);
     }
   };
 
@@ -385,6 +429,11 @@ export class ThreeViewport {
   };
 
   private handleClick = (event: MouseEvent) => {
+    if (performance.now() < this.ignoreClickUntil) {
+      this.ignoreClickUntil = 0;
+      return;
+    }
+    this.ignoreClickUntil = 0;
     this.updatePointer(event);
     const hit = this.findHit();
     const id = hit?.object.userData.nodeId;
@@ -418,6 +467,7 @@ export class ThreeViewport {
   resetView() {
     this.setZoomLevel(1);
     this.targetOrbitYaw = 0;
+    this.targetOrbitPitch = ThreeViewport.defaultOrbitPitch;
     this.targetDepthTravel = 0;
     this.onViewChange(1, 0, this.maxDepthTravel());
   }
@@ -435,9 +485,34 @@ export class ThreeViewport {
     this.onViewChange(this.zoomLevel, this.targetDepthTravel, this.maxDepthTravel());
   }
 
+  private orbitBy(deltaX: number, deltaY: number, sensitivity: number) {
+    this.targetOrbitYaw += deltaX * sensitivity;
+    this.targetOrbitPitch = THREE.MathUtils.clamp(
+      this.targetOrbitPitch + deltaY * sensitivity,
+      ThreeViewport.minOrbitPitch,
+      ThreeViewport.maxOrbitPitch,
+    );
+    this.targetDepthTravel = Math.min(this.targetDepthTravel, this.maxDepthTravel());
+    this.onViewChange(this.zoomLevel, this.targetDepthTravel, this.maxDepthTravel());
+  }
+
   private maxDepthTravel() {
     if (!this.hasSceneItems) return 0;
-    return Math.max(0, ThreeViewport.baseCameraZ / this.zoomLevel - this.deepestSceneZ - ThreeViewport.depthFocusDistance);
+    const direction = this.orbitDirection(this.targetOrbitYaw, this.targetOrbitPitch);
+    const deepestDistance = this.sceneDepthPositions.reduce(
+      (deepest, position) => Math.max(deepest, -position.dot(direction)),
+      0,
+    );
+    return Math.max(0, ThreeViewport.baseCameraZ / this.zoomLevel + deepestDistance - ThreeViewport.depthFocusDistance);
+  }
+
+  private orbitDirection(yaw: number, pitch: number) {
+    const horizontal = Math.cos(pitch);
+    return new THREE.Vector3(
+      Math.sin(yaw) * horizontal,
+      Math.sin(pitch),
+      Math.cos(yaw) * horizontal,
+    );
   }
 
   private wheelPixels(delta: number, mode: number) {
@@ -456,10 +531,10 @@ export class ThreeViewport {
   }
 
   private positionCamera(distance: number, depth: number) {
-    const sinYaw = Math.sin(this.orbitYaw);
-    const cosYaw = Math.cos(this.orbitYaw);
-    this.camera.position.set(sinYaw * (distance - depth), 0.4, cosYaw * (distance - depth));
-    this.camera.lookAt(-sinYaw * depth, 0, -cosYaw * depth);
+    const direction = this.orbitDirection(this.orbitYaw, this.orbitPitch);
+    const target = direction.clone().multiplyScalar(-depth);
+    this.camera.position.copy(target).addScaledVector(direction, distance);
+    this.camera.lookAt(target);
   }
 
   private disposeCard(mesh: THREE.Mesh) {

@@ -18,8 +18,9 @@ FileVerse is a cross-platform desktop file browser that makes filesystem hierarc
 2. Spatial position and depth communicate the active directory's contents and hierarchy; the open directory itself is identified in the UI rather than repeated as a primary scene card.
 3. Folders and files are visually distinct. Selecting and opening a folder moves into it with a comprehensible camera transition; breadcrumbs and Back return through the hierarchy.
 4. The same core browsing flow works on macOS, Windows, and Linux using native filesystem paths.
+5. Standard local sidebar shortcuts open real OS locations (Home, Desktop, Documents, Downloads, and available media folders); unavailable locations are omitted.
 
-Use one active directory at a time and a bounded number of visible objects. Fetch only the active directory and its direct children for MVP-0; never recursively index the selected root. Use deterministic placement and a small set of file-type icons. Add bounded camera zoom so users can inspect nearer cards or reveal more of the already-loaded depth field without triggering filesystem reads. Include a directory picker and fixture content so the concept can be evaluated quickly.
+Use one active directory at a time and a bounded number of visible objects. Fetch only the active directory and its direct children for MVP-0; never recursively index the selected root. Use deterministic placement and a small set of file-type icons. Add bounded camera zoom so users can inspect nearer cards or reveal more of the already-loaded depth field without triggering filesystem reads. Include a directory picker, standard local location shortcuts, and fixture content so the concept can be evaluated quickly.
 
 ### Explicitly out of scope for MVP-0
 
@@ -142,7 +143,9 @@ Expose a small command surface through one frontend adapter module. Avoid direct
 ```ts
 interface FilesystemPort {
   openDefaultDirectory(): Promise<DirectorySnapshot>;
-  chooseRoot(): Promise<FileNode | null>;
+  listSidebarLocations(): Promise<SidebarLocation[]>;
+  openSidebarLocation(id: string): Promise<DirectorySnapshot>;
+  chooseRoot(): Promise<DirectorySnapshot | null>;
   listDirectory(path: string, options?: { limit?: number; cursor?: string }): Promise<DirectorySnapshot>;
 }
 ```
@@ -152,7 +155,8 @@ Use serializable DTOs and stable error codes; map backend errors into user-facin
 ### MVP-0 command contract in the current scaffold
 
 - `open_default_directory` opens the user's Home directory on launch, canonicalizes it, and sets it as the session root.
-- `choose_root` opens the native folder picker only when the user asks to switch roots, canonicalizes the selected directory, and remembers it for the app session.
+- `list_sidebar_locations` resolves standard local locations through Tauri's platform path resolver, filters missing directories, and removes canonical duplicates. `open_sidebar_location({ id })` accepts only a known location ID, lists that directory, and then makes it the session root. The frontend never supplies an arbitrary path for this action.
+- `choose_root` opens the native folder picker only when the user asks to switch roots, canonicalizes and lists the selected directory, and only then makes it the session root. A failed listing leaves the prior root intact.
 - `list_directory({ path })` returns that directory and its direct children only. The backend rejects paths outside the selected root and paths that traverse symlinks, sorts directories first, and caps results at 300 with `truncated: true`.
 - The current Rust DTO is intentionally the MVP subset of the conceptual model above: it includes `id`, opaque `path`, `parentId`, `name`, `kind`, `extension`, `sizeBytes`, `modifiedAt`, `hidden`, and `isSymlink`. It does not yet return capabilities, symlink targets, or a paging token.
 - Errors currently cross IPC as stable string codes (`NOT_FOUND`, `PERMISSION_DENIED`, `NOT_DIRECTORY`, `UNSUPPORTED_PATH_ENCODING`, `ROOT_NOT_SELECTED`, `OUTSIDE_SELECTED_ROOT`, `FILESYSTEM_ERROR`) and are mapped to short UI messages. Replace with a structured envelope if additional recovery actions are introduced.
@@ -219,11 +223,11 @@ Later layout experiments may introduce clustering or user-controlled arrangement
 
 ### Camera and navigation
 
-- Use a perspective camera with restrained orbit/pan controls and a stable visual anchor on the active directory. Motion should feel like traveling through filesystem space, not like a game camera; avoid movement that makes orientation unclear.
+- Use a perspective camera with bounded-pitch orbit and a stable visual anchor on the active directory. Motion should feel like traveling through filesystem space, not like a game camera; avoid movement that makes orientation unclear.
 - Support bounded trackpad pinch zoom from 72% to 160%, with modified-wheel and visible button alternatives. Zoom changes camera distance and reveals more of the already-loaded depth field; it does not request or enumerate more files.
-- Map two-finger horizontal scrolling to a damped camera yaw, limited to a comfortable range (initial target: ±36°) to retain card readability. It must not pan the filesystem or change selection.
-- Map two-finger vertical scrolling to a smooth camera dolly through the loaded depth rows. Clamp travel to the current scene's depth so short folders do not scroll into empty space; reverse scrolling returns toward the entrance. Keep selection and filesystem state unchanged, with accessible Deeper/Back controls as alternatives.
-- Reset zoom, orbit, and depth framing when the active directory changes. Provide a Reset view button within a directory and keep Back/breadcrumb navigation independent of camera controls.
+- Map two-axis trackpad scrolling and primary-button mouse drag to damped camera yaw and pitch around the spatial field. Yaw supports continuous full revolutions; clamp pitch before the camera flips. Diagonal input changes both axes. Cards face the camera during orbit so labels remain readable from every yaw angle. Rotation must not pan the filesystem, change selection, or request directory data.
+- Use accessible Deeper/Entrance controls to dolly through loaded depth rows. Clamp travel to the current scene's projected depth so rotation does not move the camera into empty space; keep selection and filesystem state unchanged.
+- Reset zoom, yaw, pitch, and depth framing when the active directory changes. Provide a Reset view button within a directory and keep Back/breadcrumb navigation independent of camera controls.
 - Opening a folder: request its snapshot, show loading feedback, then move the scene through depth as the new directory's contents arrive from farther back. Target the spec's initial 200–600 ms transition range and tune through use. If loading fails, retain the current directory and show an actionable error.
 - Back/breadcrumb: reverse the spatial transition and restore the prior scene from a small in-memory navigation stack when available; otherwise fetch it again. Do not rely on camera history as navigation state.
 - Use short, interruptible transitions; respect `prefers-reduced-motion` and provide a no-animation mode.
@@ -331,10 +335,10 @@ Keep the frontend domain modules independent of the exact filesystem transport s
 
 Testing is focused on risk and behavior, not broad infrastructure.
 
-- **Rust unit tests:** sorting, DTO conversion, error mapping, pagination/truncation, and symlink classification.
+- **Rust unit tests:** cover empty, missing, permission-denied, Unicode and hidden names, symlink classification/non-entry, root-boundary rejection, non-UTF-8 path errors, directory ordering, and the 300-entry truncation cap. These checks exercise isolated temporary fixtures and do not read or modify project/user folders.
 - **TypeScript unit tests:** FileNode normalization assumptions, navigation stack, stale-response handling, and deterministic scene layout.
 - **Component checks:** breadcrumbs, selection/details state, loading/error/empty states, accessible list and keyboard behavior.
-- **Manual platform smoke test:** choose a directory, navigate into and back from a folder, select an entry, test Unicode and hidden names, and check permission/missing-path behavior on each target OS.
+- **Manual platform smoke test:** choose a directory, navigate into and back from a folder, select an entry, and validate the OS picker, Unicode and hidden names, and permission/missing-path behavior on each target OS. Rust fixtures do not replace native OS permission, picker, or cross-platform checks.
 - **E2E automation:** add only after the first working vertical slice; automate the core open-folder/back flow using a fixed fixture directory. Keep native file picker behavior covered by manual or platform-specific checks if automation is brittle.
 
 Do not add a large testing stack before the project exists. Start with the framework defaults, pure-function tests, and a short reproducible smoke-test checklist. CI should at minimum build the frontend and compile/check the Rust application on supported runners once CI is introduced.
@@ -369,7 +373,7 @@ For MVP-0, a single agent may be faster and safer until the interfaces stabilize
 2. **Filesystem vertical slice:** open Home by default or choose another root, list one level, normalize DTOs, show errors and empty state.
 3. **Spatial proof:** deterministic layout and folder/file rendering for a fixture directory; selection and details.
 4. **Navigation proof:** open folder, breadcrumb/back, transition, and stale-request protection.
-5. **Spatial controls validation:** verify trackpad pinch, horizontal orbit, and vertical depth travel in the Tauri desktop app; accessible camera controls and reset are implemented in the preview. Confirm camera controls reveal the loaded scene without loading additional filesystem entries and reset on folder navigation.
+5. **Spatial controls validation:** verify trackpad pinch, two-axis orbit, mouse-drag orbit, and depth controls in the Tauri desktop app. Confirm camera controls reveal the loaded scene without loading additional filesystem entries and reset on folder navigation.
 6. **Concept review:** try with representative real directories on all target operating systems; record usability and performance findings before adding roadmap features.
 
 ### Acceptance checklist for MVP-0
@@ -379,9 +383,10 @@ For MVP-0, a single agent may be faster and safer until the interfaces stabilize
 - [ ] Folder and file visuals are distinguishable; selection is visible and keyboard-accessible.
 - [ ] Open folder, navigate back, and use breadcrumbs without losing orientation.
 - [ ] Pinch zoom in/out on a trackpad; use an accessible alternative and reset the view. Zoom reveals loaded depth without triggering additional filesystem reads.
-- [ ] Horizontal two-finger scrolling smoothly orbits within bounds and does not change directory selection; Reset returns both zoom and orbit to default.
-- [ ] Vertical two-finger scrolling moves progressively through the loaded rows, clamps at the scene's depth, and reverses toward the entrance without scanning or changing selection.
+- [ ] Two-axis trackpad scrolling and mouse drag orbit through a full yaw revolution, tilt within safe pitch limits, and do not change directory selection; Reset restores the default orientation.
+- [ ] Accessible depth controls move progressively through loaded rows, clamp at scene depth, and do not scan or change selection.
 - [ ] Empty, large, missing, and permission-denied directories fail gracefully.
+- [x] Available Home, Desktop, Documents, Downloads, and common media shortcuts open the corresponding real directory; missing locations are omitted and shortcut navigation resets the current-root boundary safely. (User-verified in the desktop app.)
 - [ ] A 300-entry directory remains responsive or visibly truncates/paginates.
 - [ ] No recursive traversal, implicit symlink traversal, or unnecessary native permissions.
 

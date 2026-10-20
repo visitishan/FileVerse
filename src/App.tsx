@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { sampleChildren, sampleSnapshot } from "./data/sampleFilesystem";
-import type { DirectorySnapshot, FileNode } from "./filesystem/types";
+import type { DirectorySnapshot, FileNode, SidebarLocation } from "./filesystem/types";
 import { isNativeRuntime, tauriFilesystem } from "./filesystem/tauriFilesystem";
 import { projectDirectory } from "./scene/SpatialScene";
 import { ThreeViewport } from "./scene/ThreeViewport";
@@ -17,6 +17,7 @@ const errorMessage = (cause: unknown) => {
   if (message.includes("NOT_FOUND")) return "This folder is no longer available. Choose another folder.";
   if (message.includes("NOT_DIRECTORY")) return "That location is not a folder.";
   if (message.includes("UNSUPPORTED_PATH_ENCODING")) return "This path contains characters that this platform cannot display.";
+  if (message.includes("LOCATION_UNAVAILABLE")) return "That location isn’t available on this device.";
   return "The folder could not be opened. Please try another location.";
 };
 
@@ -26,6 +27,8 @@ export default function App() {
   const [viewState, setViewState] = useState({ zoom: 1, depth: 0, maxDepth: 0 });
   const zoomLevel = viewState.zoom;
   const [nativeMode] = useState(isNativeRuntime);
+  const [sidebarLocations, setSidebarLocations] = useState<SidebarLocation[]>(nativeMode ? [] : [{ id: "home", name: "Home" }]);
+  const [activeLocationId, setActiveLocationId] = useState<string | null>("home");
   const initialDirectory: FileNode = nativeMode ? {
     id: "native:choose-root",
     path: "",
@@ -88,6 +91,37 @@ export default function App() {
     setSelected(node);
   };
 
+  const openSidebarLocation = async (location: SidebarLocation) => {
+    if (!nativeMode) {
+      setCurrent(sampleSnapshot.directory);
+      setEntries(sampleSnapshot.children);
+      setTruncated(false);
+      setSelected(sampleSnapshot.directory);
+      setStack([]);
+      setHasSelectedRoot(true);
+      setActiveLocationId(location.id);
+      return;
+    }
+    const request = ++requestId.current;
+    setBusy(true);
+    setError(null);
+    try {
+      const snapshot = await tauriFilesystem.openSidebarLocation(location.id);
+      if (request !== requestId.current) return;
+      setCurrent(snapshot.directory);
+      setEntries(snapshot.children);
+      setTruncated(snapshot.truncated);
+      setSelected(snapshot.directory);
+      setStack([]);
+      setHasSelectedRoot(true);
+      setActiveLocationId(location.id);
+    } catch (cause) {
+      if (request === requestId.current) setError(errorMessage(cause));
+    } finally {
+      if (request === requestId.current) setBusy(false);
+    }
+  };
+
   const goBack = () => {
     const previous = stack.at(-1);
     if (!previous) return;
@@ -118,16 +152,16 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      const root = await tauriFilesystem.chooseRoot();
-      if (!root || request !== requestId.current) return;
-      const snapshot = await tauriFilesystem.listDirectory(root.path);
+      const snapshot = await tauriFilesystem.chooseRoot();
       if (request !== requestId.current) return;
+      if (!snapshot) return;
       setCurrent(snapshot.directory);
       setEntries(snapshot.children);
       setTruncated(snapshot.truncated);
       setSelected(snapshot.directory);
       setStack([]);
       setHasSelectedRoot(true);
+      setActiveLocationId(null);
     } catch (cause) {
       if (request === requestId.current) setError(errorMessage(cause));
     } finally {
@@ -147,6 +181,7 @@ export default function App() {
       setSelected(snapshot.directory);
       setStack([]);
       setHasSelectedRoot(true);
+      setActiveLocationId("home");
       setError(null);
     } catch (cause) {
       if (request === requestId.current) setError(errorMessage(cause));
@@ -157,6 +192,15 @@ export default function App() {
 
   useEffect(() => {
     if (nativeMode) void loadDefaultDirectory();
+  }, [nativeMode]);
+
+  useEffect(() => {
+    if (!nativeMode) return;
+    let cancelled = false;
+    void tauriFilesystem.listSidebarLocations()
+      .then((locations) => { if (!cancelled) setSidebarLocations(locations); })
+      .catch((cause) => { if (!cancelled) setError(errorMessage(cause)); });
+    return () => { cancelled = true; };
   }, [nativeMode]);
 
   useEffect(() => {
@@ -214,32 +258,20 @@ export default function App() {
         <aside className="sidebar">
           <section className="side-group">
             <div className="sidebar-section-label">FAVORITES</div>
-            <button className="sidebar-item active"><span className="sidebar-icon drive-icon">▱</span><span>Macintosh HD</span></button>
-            <button className="sidebar-item"><span className="sidebar-icon airdrop-icon">◉</span><span>AirDrop</span></button>
-            <button className="sidebar-item"><span className="sidebar-icon app-icon">✣</span><span>Applications</span></button>
-            <button className="sidebar-item"><span className="sidebar-icon folder-icon">▰</span><span>Desktop</span></button>
-            <button className="sidebar-item"><span className="sidebar-icon folder-icon">▰</span><span>Documents</span></button>
-            <button className="sidebar-item"><span className="sidebar-icon download-icon">↓</span><span>Downloads</span></button>
-            <button className="sidebar-item"><span className="sidebar-icon folder-icon">▰</span><span>Projects</span></button>
-            <button className="sidebar-item"><span className="sidebar-icon photo-icon">▧</span><span>Pictures</span></button>
-            <button className="sidebar-item"><span className="sidebar-icon music-icon">♫</span><span>Music</span></button>
-            <button className="sidebar-item"><span className="sidebar-icon movie-icon">▤</span><span>Movies</span></button>
+            {sidebarLocations.map((location) => (
+              <button key={location.id} className={`sidebar-item ${activeLocationId === location.id ? "active" : ""}`} onClick={() => void openSidebarLocation(location)} disabled={busy} aria-current={activeLocationId === location.id ? "page" : undefined}>
+                <span className={`sidebar-icon ${location.id === "home" ? "drive-icon" : location.id === "downloads" ? "download-icon" : "folder-icon"}`}>{location.id === "downloads" ? "↓" : location.id === "home" ? "⌂" : "▰"}</span>
+                <span>{location.name}</span>
+              </button>
+            ))}
           </section>
           <section className="side-group location-group">
             <div className="sidebar-section-label">LOCATIONS</div>
-            <button className="sidebar-item"><span className="sidebar-icon cloud-icon">☁</span><span>iCloud Drive</span></button>
-            <button className="sidebar-item"><span className="sidebar-icon cloud-icon">△</span><span>Google Drive</span></button>
-            <button className="sidebar-item"><span className="sidebar-icon cloud-icon">☁</span><span>OneDrive</span></button>
-            <button className="sidebar-item"><span className="sidebar-icon network-icon">◎</span><span>Network</span></button>
+            <button className="sidebar-item" disabled title="Cloud and network locations are planned for a later milestone"><span className="sidebar-icon cloud-icon">☁</span><span>Cloud & Network</span></button>
           </section>
           <section className="side-group tags-group">
             <div className="sidebar-section-label">TAGS</div>
-            <button className="sidebar-item"><i className="tag-dot red-tag" />Work</button>
-            <button className="sidebar-item"><i className="tag-dot orange-tag" />Personal</button>
-            <button className="sidebar-item"><i className="tag-dot yellow-tag" />Important</button>
-            <button className="sidebar-item"><i className="tag-dot green-tag" />Ideas</button>
-            <button className="sidebar-item"><i className="tag-dot blue-tag" />Archive</button>
-            <button className="sidebar-item"><i className="tag-dot purple-tag" />Temp</button>
+            <button className="sidebar-item" disabled title="Tags are planned for a later milestone"><i className="tag-dot red-tag" />Tags are coming later</button>
           </section>
         </aside>
 
@@ -259,7 +291,7 @@ export default function App() {
             </svg>
             <div className="scene-horizon" />
             <div className="scene-depth-caption"><span>SPATIAL DEPTH</span><i /><i /><i /></div>
-            <div className="scene-zoom-controls" role="group" aria-label="Spatial view controls" title="Pinch to zoom · horizontal scroll to orbit · vertical scroll to move through depth">
+            <div className="scene-zoom-controls" role="group" aria-label="Spatial view controls" title="Pinch to zoom · two-axis scroll or drag to orbit · arrows move through depth">
               <button onClick={() => viewport.current?.zoomBy(-1)} disabled={zoomLevel <= 0.721} aria-label="Zoom out" title="Zoom out">−</button>
               <output aria-label="Zoom level">{Math.round(zoomLevel * 100)}%</output>
               <button onClick={() => viewport.current?.zoomBy(1)} disabled={zoomLevel >= 1.599} aria-label="Zoom in" title="Zoom in">+</button>

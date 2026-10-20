@@ -21,13 +21,33 @@
 
 | Stage | Outcome | State |
 |---|---|---|
-| 0. Project foundation | Product, architecture, and agent guidance are documented | In progress: `PROJECT_SPEC.md`, `ARCHITECTURE.md`, `AGENTS.md`, and this roadmap |
-| 1. MVP-0 spatial prototype | See a folder's actual contents in depth, navigate into folders/back, zoom, orbit, and travel through loaded depth rows | In progress: zoom, bounded horizontal orbit, and vertical depth travel with accessible controls work in preview; native gesture checks remain |
+| 0. Project foundation | Product, architecture, and agent guidance are documented | Complete: specification, architecture, contributor rules, roadmap, and native smoke checklist are present |
+| 1. MVP-0 spatial prototype | See a folder's actual contents in depth, navigate into folders/back, zoom, orbit, and travel through loaded depth rows | In progress: core folder navigation, local sidebar shortcuts, and 360° orbit have been manually verified in the desktop app; complete native edge-case checks and platform coverage remain |
 | 2. File manager basics | Make browsing useful for everyday discovery | After spatial concept review |
 | 3. File operations | Safely perform common local file actions | After browsing behavior stabilizes |
 | 4. Platform completion | Verify and adapt behavior for macOS, Windows, and Linux | Incremental, with dedicated hardening stage |
 | 5. Additional storage | Explore network and cloud locations through adapters | Only after local filesystem experience is solid |
 | 6. Advanced intelligence | Add smart organization and search where evidence supports it | Long-term exploration |
+
+---
+
+## MVP-0 progress tracker
+
+This is the repository's working checklist for contributor handoff. Update a row only when its implementation or verification evidence changes. The detailed pass/fail log for native behavior lives in [`docs/MVP0_NATIVE_SMOKE_CHECKLIST.md`](docs/MVP0_NATIVE_SMOKE_CHECKLIST.md).
+
+| Work area | Implementation | Verification / next action |
+|---|---|---|
+| Product and technical foundation | Complete | Spec, architecture, contributor rules, and roadmap agree on the MVP-0 boundary |
+| Tauri + React/TypeScript + Three.js application | Implemented | `npm run build` passes; run on the target desktop OS before release |
+| Rust local filesystem adapter and normalized entries | Implemented; fixture tests cover empty, missing, restricted, Unicode, symlink, root-boundary, and large directories | Run `cargo test` and complete the matching native smoke cases |
+| Home startup, common local sidebar locations, folder open/back, and breadcrumbs | Implemented | Core browsing flow and sidebar shortcuts manually verified by the user in the desktop app; finish picker/cancel and root-boundary smoke checks |
+| Spatial cards and folder-entry transition | Implemented | Manually verified during MVP-0 use; continue to assess readability with representative directories |
+| Zoom, orbit, and loaded-depth controls | Implemented; orbit supports full yaw, two-axis input, mouse drag, and bounded pitch | User confirmed the 360° orbit in the desktop app; separately verify trackpad axes, pinch limits, depth controls, reset, and no selection change |
+| macOS native behavior | In progress | Work through the [native smoke checklist](docs/MVP0_NATIVE_SMOKE_CHECKLIST.md) and record each result |
+| Windows and Linux behavior | Pending | Repeat the platform checklist before claiming support |
+| Stage 2 features | Deferred | Do not begin search, previews, file operations, cloud storage, or watchers before the MVP-0 review gate |
+
+**Where to continue:** complete the remaining macOS checks in the native smoke checklist, record failures here, fix any MVP-0 blockers, then review Stage 1 acceptance criteria. Do not start Stage 2 until the review gate says the spatial browsing model is ready.
 
 ---
 
@@ -61,13 +81,13 @@ Prove that users can understand and navigate a real directory more intuitively w
 ### Scope
 
 1. Create a Tauri + React/TypeScript + Three.js desktop shell.
-2. Open the user's Home directory at launch and let them choose another local root on demand.
+2. Open the user's Home directory at launch, provide working shortcuts to available OS locations (Home, Desktop, Documents, Downloads, and common media folders), and let them choose another local root on demand.
 3. Read one directory at a time through a narrow Rust filesystem adapter and normalize entries into `FileNode` records.
 4. Build a deterministic, contents-first scene projection: identify the open directory in breadcrumbs/details and arrange its direct files and subfolders as the primary cards.
 5. Render translucent folder cards, file representations, restrained lighting, and depth cues inspired by the reference images.
 6. Support selection, opening a folder, Back, and breadcrumb navigation.
 7. Animate folder navigation as a short spatial camera transition; preserve orientation and respect reduced-motion preferences.
-8. Add bounded trackpad pinch zoom up to 160%, horizontal two-finger camera orbit, and vertical two-finger dolly through loaded rows; provide accessible controls and reset-to-default. Camera gestures must not trigger filesystem reads.
+8. Add bounded trackpad pinch zoom up to 160%, full-yaw two-axis orbit by trackpad scroll or mouse drag, and accessible dolly controls through loaded rows; provide reset-to-default. Camera gestures must not trigger filesystem reads.
 9. Show loading, empty, permission-denied, unavailable-path, and large-directory states.
 
 ### Explicitly deferred
@@ -82,10 +102,11 @@ Search, thumbnails, general file previews, file operations, cloud/network storag
 - Distinguish folders from files and select entries with visible focus/selection.
 - Open a folder and return using Back or a breadcrumb without losing orientation.
 - Zoom from 72% to 160%, use the accessible controls, and reset the view; zoom reveals loaded depth without scanning more files.
-- Orbit gently with horizontal two-finger scrolling; the angle stays bounded, selection does not change, and Reset restores the default view.
-- Move forward/back through loaded rows with vertical two-finger scrolling; travel stops at the scene's depth, does not change selection or scan more files, and Reset restores the default view.
+- Orbit through full yaw revolutions with horizontal/diagonal trackpad scroll or mouse drag; pitch stays within safe limits, selection does not change, and Reset restores the default view.
+- Move forward/back through loaded rows with accessible depth controls; travel stops at scene depth, does not change selection or scan more files, and Reset restores the default view.
 - Navigate a directory with hundreds of entries without freezing; excess detail is capped or paginated visibly.
 - Handle empty, missing, and permission-denied directories without crashing.
+- Open each available local sidebar location and show its real contents; omit locations that do not exist on the current OS.
 - Core domain and layout logic can be exercised without a running native filesystem command.
 
 ### Review gate
@@ -107,7 +128,7 @@ Make the spatial browser practical for finding and inspecting files while keepin
 - Preview panel for a limited set of safe, common file types.
 - Thumbnails loaded lazily and only when visible.
 - Context menu and drag-and-drop only after interaction patterns are validated.
-- Sidebar locations and favorites, using OS-provided locations rather than hardcoded macOS assumptions.
+- User-managed favorites beyond the standard OS-provided local sidebar locations in MVP-0.
 
 ### Exit criteria
 
@@ -197,9 +218,9 @@ These are experiments, not commitments. Each requires a clear user problem, priv
 
 ## Immediate next actions
 
-1. Verify 160% pinch zoom, horizontal two-finger orbit, and vertical two-finger depth travel in the Tauri desktop app; the accessible controls and reset already work in the preview.
-2. Exercise native directory listing against empty, permission-restricted, Unicode, symlink-containing, and large folders.
-3. Review the prototype against the Stage 1 acceptance criteria before expanding scope.
+1. Complete remaining macOS native checks using [`docs/MVP0_NATIVE_SMOKE_CHECKLIST.md`](docs/MVP0_NATIVE_SMOKE_CHECKLIST.md): trackpad axes, pinch bounds, depth controls, picker cancellation, root boundary, and filesystem edge states.
+2. Run the Rust filesystem fixture suite and resolve any issues found by native smoke checks.
+3. Review the prototype against the Stage 1 acceptance criteria before expanding scope; then test Windows and Linux separately before claiming support.
 
 ## Change policy
 

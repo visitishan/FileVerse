@@ -1,10 +1,12 @@
 use serde::Serialize;
 use std::{
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
     time::UNIX_EPOCH,
 };
+use tauri::Manager;
 
 const DIRECTORY_LIMIT: usize = 300;
 
@@ -37,6 +39,13 @@ struct DirectorySnapshotDto {
     truncated: bool,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SidebarLocationDto {
+    id: &'static str,
+    name: &'static str,
+}
+
 fn node_for(path: &Path) -> Result<FileNodeDto, String> {
     let metadata = fs::symlink_metadata(path).map_err(|error| map_io_error(&error))?;
     let is_symlink = metadata.file_type().is_symlink();
@@ -49,27 +58,39 @@ fn node_for(path: &Path) -> Result<FileNodeDto, String> {
     } else {
         "other"
     };
-    let path_buf = PathBuf::from(path);
-    let path_text = path_buf.to_string_lossy().into_owned();
-    let name = path.file_name().and_then(|part| part.to_str())
+    let path_text = path_to_text(path)?;
+    let parent_id = path.parent().map(path_to_text).transpose()?;
+    let name = path
+        .file_name()
+        .and_then(|part| part.to_str())
         .map(str::to_owned)
         .or_else(|| path.to_str().map(str::to_owned))
         .ok_or_else(|| "UNSUPPORTED_PATH_ENCODING".to_string())?;
     let extension = if kind == "file" {
-        path.extension().and_then(|part| part.to_str()).map(str::to_lowercase)
+        path.extension()
+            .and_then(|part| part.to_str())
+            .map(str::to_lowercase)
     } else {
         None
     };
-    let modified_at = metadata.modified().ok()
+    let modified_at = metadata
+        .modified()
+        .ok()
         .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-        .and_then(|duration| chrono::DateTime::<chrono::Utc>::from_timestamp(duration.as_secs() as i64, 0))
+        .and_then(|duration| {
+            chrono::DateTime::<chrono::Utc>::from_timestamp(duration.as_secs() as i64, 0)
+        })
         .map(|time| time.to_rfc3339());
 
     Ok(FileNodeDto {
         id: path_text.clone(),
-        parent_id: path.parent().map(|parent| parent.to_string_lossy().into_owned()),
+        parent_id,
         hidden: name.starts_with('.'),
-        size_bytes: if kind == "file" { Some(metadata.len()) } else { None },
+        size_bytes: if kind == "file" {
+            Some(metadata.len())
+        } else {
+            None
+        },
         modified_at,
         path: path_text,
         name,
@@ -77,6 +98,12 @@ fn node_for(path: &Path) -> Result<FileNodeDto, String> {
         extension,
         is_symlink,
     })
+}
+
+fn path_to_text(path: &Path) -> Result<String, String> {
+    path.to_str()
+        .map(str::to_owned)
+        .ok_or_else(|| "UNSUPPORTED_PATH_ENCODING".to_string())
 }
 
 fn map_io_error(error: &std::io::Error) -> String {
@@ -87,22 +114,129 @@ fn map_io_error(error: &std::io::Error) -> String {
     }
 }
 
+fn location_candidates(
+    app: &tauri::AppHandle,
+) -> Vec<(&'static str, &'static str, Result<PathBuf, String>)> {
+    let paths = app.path();
+    let home = paths.home_dir();
+    let projects = home
+        .as_ref()
+        .map(|path| path.join("Projects"))
+        .map_err(|error| error.to_string());
+    vec![
+        ("home", "Home", home.map_err(|error| error.to_string())),
+        (
+            "desktop",
+            "Desktop",
+            paths.desktop_dir().map_err(|error| error.to_string()),
+        ),
+        (
+            "documents",
+            "Documents",
+            paths.document_dir().map_err(|error| error.to_string()),
+        ),
+        (
+            "downloads",
+            "Downloads",
+            paths.download_dir().map_err(|error| error.to_string()),
+        ),
+        ("projects", "Projects", projects),
+        (
+            "pictures",
+            "Pictures",
+            paths.picture_dir().map_err(|error| error.to_string()),
+        ),
+        (
+            "music",
+            "Music",
+            paths.audio_dir().map_err(|error| error.to_string()),
+        ),
+        (
+            "movies",
+            "Movies",
+            paths.video_dir().map_err(|error| error.to_string()),
+        ),
+    ]
+}
+
+fn resolve_sidebar_location(app: &tauri::AppHandle, id: &str) -> Result<PathBuf, String> {
+    let (_, _, path) = location_candidates(app)
+        .into_iter()
+        .find(|(candidate_id, _, _)| *candidate_id == id)
+        .ok_or_else(|| "LOCATION_UNAVAILABLE".to_string())?;
+    let path = path.map_err(|_| "LOCATION_UNAVAILABLE".to_string())?;
+    let path = fs::canonicalize(path).map_err(|error| map_io_error(&error))?;
+    let metadata = fs::symlink_metadata(&path).map_err(|error| map_io_error(&error))?;
+    if !metadata.is_dir() {
+        return Err("NOT_DIRECTORY".into());
+    }
+    Ok(path)
+}
+
 #[tauri::command]
-fn list_directory(path: String, state: tauri::State<'_, FilesystemState>) -> Result<DirectorySnapshotDto, String> {
+fn list_sidebar_locations(app: tauri::AppHandle) -> Vec<SidebarLocationDto> {
+    let mut seen = HashSet::new();
+    location_candidates(&app)
+        .into_iter()
+        .filter_map(|(id, name, candidate)| {
+            let path = fs::canonicalize(candidate.ok()?).ok()?;
+            if !fs::metadata(&path).ok()?.is_dir() || !seen.insert(path) {
+                return None;
+            }
+            Some(SidebarLocationDto { id, name })
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn open_sidebar_location(
+    id: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, FilesystemState>,
+) -> Result<DirectorySnapshotDto, String> {
+    let path = resolve_sidebar_location(&app, &id)?;
+    let snapshot = read_directory(path.clone(), &path)?;
+    *state
+        .selected_root
+        .lock()
+        .map_err(|_| "FILESYSTEM_ERROR".to_string())? = Some(path);
+    Ok(snapshot)
+}
+
+#[tauri::command]
+fn list_directory(
+    path: String,
+    state: tauri::State<'_, FilesystemState>,
+) -> Result<DirectorySnapshotDto, String> {
     let directory_path = PathBuf::from(path);
-    let root_guard = state.selected_root.lock().map_err(|_| "FILESYSTEM_ERROR".to_string())?;
-    let root = root_guard.as_ref().ok_or_else(|| "ROOT_NOT_SELECTED".to_string())?;
+    let root_guard = state
+        .selected_root
+        .lock()
+        .map_err(|_| "FILESYSTEM_ERROR".to_string())?;
+    let root = root_guard
+        .as_ref()
+        .ok_or_else(|| "ROOT_NOT_SELECTED".to_string())?;
+    read_directory(directory_path, root)
+}
+
+fn read_directory(directory_path: PathBuf, root: &Path) -> Result<DirectorySnapshotDto, String> {
     if !directory_path.starts_with(root) {
         return Err("OUTSIDE_SELECTED_ROOT".into());
     }
-    let relative = directory_path.strip_prefix(root).map_err(|_| "OUTSIDE_SELECTED_ROOT".to_string())?;
-    let mut checked_path = root.clone();
+    let relative = directory_path
+        .strip_prefix(root)
+        .map_err(|_| "OUTSIDE_SELECTED_ROOT".to_string())?;
+    let mut checked_path = PathBuf::from(root);
     for component in relative.components() {
         match component {
             std::path::Component::Normal(part) => checked_path.push(part),
             _ => return Err("OUTSIDE_SELECTED_ROOT".into()),
         }
-        if fs::symlink_metadata(&checked_path).map_err(|error| map_io_error(&error))?.file_type().is_symlink() {
+        if fs::symlink_metadata(&checked_path)
+            .map_err(|error| map_io_error(&error))?
+            .file_type()
+            .is_symlink()
+        {
             return Err("SYMLINK_NOT_ENTERABLE".into());
         }
     }
@@ -125,7 +259,10 @@ fn list_directory(path: String, state: tauri::State<'_, FilesystemState>) -> Res
     entries.sort_by(|a, b| {
         let a_dir = a.kind == "directory";
         let b_dir = b.kind == "directory";
-        b_dir.cmp(&a_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        b_dir
+            .cmp(&a_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            .then_with(|| a.name.cmp(&b.name))
     });
     Ok(DirectorySnapshotDto {
         directory,
@@ -136,31 +273,42 @@ fn list_directory(path: String, state: tauri::State<'_, FilesystemState>) -> Res
 }
 
 #[tauri::command]
-fn open_default_directory(state: tauri::State<'_, FilesystemState>) -> Result<DirectorySnapshotDto, String> {
-    let home = if cfg!(target_os = "windows") {
-        std::env::var_os("USERPROFILE")
-    } else {
-        std::env::var_os("HOME")
-    }.ok_or_else(|| "HOME_UNAVAILABLE".to_string())?;
-    let path = fs::canonicalize(PathBuf::from(home)).map_err(|error| map_io_error(&error))?;
-    *state.selected_root.lock().map_err(|_| "FILESYSTEM_ERROR".to_string())? = Some(path.clone());
-    list_directory(path.to_string_lossy().into_owned(), state)
+fn open_default_directory(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, FilesystemState>,
+) -> Result<DirectorySnapshotDto, String> {
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|_| "HOME_UNAVAILABLE".to_string())?;
+    let path = fs::canonicalize(home).map_err(|error| map_io_error(&error))?;
+    let snapshot = read_directory(path.clone(), &path)?;
+    *state
+        .selected_root
+        .lock()
+        .map_err(|_| "FILESYSTEM_ERROR".to_string())? = Some(path.clone());
+    Ok(snapshot)
 }
 
 #[tauri::command]
-async fn choose_root(app: tauri::AppHandle, state: tauri::State<'_, FilesystemState>) -> Result<Option<FileNodeDto>, String> {
+async fn choose_root(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, FilesystemState>,
+) -> Result<Option<DirectorySnapshotDto>, String> {
     use tauri_plugin_dialog::DialogExt;
     let Some(selected) = app.dialog().file().blocking_pick_folder() else {
         return Ok(None);
     };
-    let selected_path = selected.into_path().map_err(|_| "UNSUPPORTED_PATH_ENCODING".to_string())?;
+    let selected_path = selected
+        .into_path()
+        .map_err(|_| "UNSUPPORTED_PATH_ENCODING".to_string())?;
     let path = fs::canonicalize(selected_path).map_err(|error| map_io_error(&error))?;
-    let node = node_for(&path)?;
-    if node.kind != "directory" {
-        return Err("NOT_DIRECTORY".into());
-    }
-    *state.selected_root.lock().map_err(|_| "FILESYSTEM_ERROR".to_string())? = Some(path);
-    Ok(Some(node))
+    let snapshot = read_directory(path.clone(), &path)?;
+    *state
+        .selected_root
+        .lock()
+        .map_err(|_| "FILESYSTEM_ERROR".to_string())? = Some(path);
+    Ok(Some(snapshot))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -168,7 +316,16 @@ pub fn run() {
     tauri::Builder::default()
         .manage(FilesystemState::default())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![choose_root, list_directory, open_default_directory])
+        .invoke_handler(tauri::generate_handler![
+            choose_root,
+            list_directory,
+            open_default_directory,
+            list_sidebar_locations,
+            open_sidebar_location
+        ])
         .run(tauri::generate_context!())
         .expect("error while running FileVerse");
 }
+
+#[cfg(test)]
+mod tests;

@@ -17,7 +17,7 @@ When documents appear to conflict, follow the product spec for user-visible goal
 - FileVerse is a practical file browser whose filesystem hierarchy is represented spatially. The 3D view must communicate location and hierarchy; it is not decoration or a game environment.
 - Keep the open directory's contents visually dominant in the scene. Identify the active directory through breadcrumbs and the details dock; do not spend the primary scene on a card for a directory that is already open.
 - Preserve familiar navigation controls, especially breadcrumbs and Back. Do not make 3D gestures the only way to navigate.
-- Build only the current milestone. MVP-0 is for proving directory access, normalized filesystem data, a contents-first spatial layout, selection, folder navigation, camera transitions, bounded spatial zoom, gentle horizontal camera orbit, and vertical camera travel through loaded depth rows.
+- Build only the current milestone. MVP-0 is for proving directory access, normalized filesystem data, a contents-first spatial layout, selection, folder navigation, camera transitions, bounded spatial zoom, full-yaw orbit from two-axis trackpad scrolling or mouse drag, safe pitch limits, and accessible travel through loaded depth rows.
 - Do not add roadmap features such as search, cloud providers, file operations, previews, watchers, tagging, sync, or plugins unless the user explicitly brings them into scope.
 - Keep visual effects restrained and preserve clarity, performance, and accessibility.
 

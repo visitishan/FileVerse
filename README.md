@@ -1,22 +1,34 @@
 # FileVerse
 
-**FileVerse is an experimental 3D desktop file browser that turns folder hierarchy into spatial depth.** Instead of presenting a directory only as a flat list, it lays out files and folders as cards in a navigable scene.
+**FileVerse is an experimental 3D desktop file browser that represents filesystem hierarchy as spatial depth.** It combines familiar folder navigation with a scene where files and folders appear as navigable cards.
 
 ![FileVerse current preview](./Current%20Preview.png)
 
-> The screenshot shows the current spatial UI prototype. The browser preview uses sample data; the Tauri desktop app can browse local directories.
+> This screenshot shows the current UI direction. Browser preview uses sample data; the Tauri desktop app browses local directories.
 
-## What works today
+## Project status
 
-- Tauri 2 desktop shell with a React, TypeScript, and Three.js interface.
-- Rust-backed local directory listing, starting from the Home directory, with an option to choose another folder.
-- Spatial folder and file cards, selection, open-folder navigation, Back, and breadcrumbs.
-- Smooth depth transitions when navigating between folders.
-- Bounded zoom (72%–160%), gentle horizontal camera orbit, and forward/back travel through loaded scene depth.
-- Accessible on-screen controls for zoom, depth travel, and resetting the camera view.
-- Lazy, direct-child directory listing with a cap; the app does not recursively index the selected root or follow symlinks into folders.
+**Current milestone: MVP-0 spatial filesystem prototype — in progress.** The core concept and folder-browsing flow are implemented. The next milestone task is to complete the native macOS smoke checklist; Windows and Linux validation has not been done yet.
 
-FileVerse is an early MVP-0 prototype. Search, previews, file operations, cloud storage, watchers, and other production file-manager features are not part of this milestone.
+| Area | Status |
+|---|---|
+| Tauri + React/TypeScript + Three.js app shell | Implemented |
+| Rust-backed local directory access and common sidebar locations | Implemented; core navigation manually verified in the desktop app |
+| Spatial cards, folder navigation, Back, and breadcrumbs | Implemented; manually verified |
+| Zoom, full-yaw orbit, bounded pitch, and depth controls | Implemented; orbit manually verified in the desktop app |
+| Native picker, permissions, and filesystem edge-case smoke checks | Remaining; see the [MVP-0 smoke checklist](./docs/MVP0_NATIVE_SMOKE_CHECKLIST.md) |
+| Windows and Linux support validation | Not yet performed |
+
+The [roadmap](./ROADMAP.md) is the source of truth for milestone progress and next steps. Keep it current as work is verified so a new contributor can see what is complete and where to continue.
+
+## Current interaction
+
+- Double-click a folder card to enter it; use Back or breadcrumbs to return.
+- Pinch to zoom from 72% to 160%.
+- Drag with the primary mouse button, or scroll with two fingers in any direction, to orbit the camera. Yaw can complete full revolutions; pitch is bounded so the view does not flip.
+- Use the on-screen depth controls to move through the already-loaded scene rows; Reset restores the default view.
+
+MVP-0 is focused on proving spatial browsing. Search, previews, file operations, cloud storage, filesystem watchers, recursive indexing, and other production file-manager features are deferred.
 
 ## Run locally
 
@@ -44,9 +56,6 @@ npm run tauri dev
 
 - [Product specification](./FileVerse_PROJECT_SPEC.md)
 - [Architecture](./ARCHITECTURE.md)
-- [Roadmap](./ROADMAP.md)
+- [Roadmap and progress tracker](./ROADMAP.md)
+- [MVP-0 native smoke checklist](./docs/MVP0_NATIVE_SMOKE_CHECKLIST.md)
 - [AI-agent contribution rules](./AGENTS.md)
-
-## Current milestone
-
-MVP-0 is focused on proving the spatial browsing concept and core directory navigation. Next work should be guided by the roadmap and feedback from using the desktop prototype.

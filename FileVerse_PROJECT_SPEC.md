@@ -302,8 +302,9 @@ Potential interactions:
 -   Click → select
 -   Double click / Enter → open
 -   Trackpad pinch → bounded zoom through the depth field
--   Two-finger horizontal scroll → gently orbit the camera around the scene
--   Two-finger vertical scroll → move the camera forward/back through stacked rows
+-   Two-finger scroll in any direction → orbit the camera around the scene; diagonal movement combines yaw and tilt
+-   Mouse drag → rotate the scene in the direction of the drag
+-   Vertical scroll → tilt the view; use visible depth controls to move forward/back through stacked rows
 -   Visible, keyboard-accessible zoom controls → alternative to pinch
 -   Drag → camera movement
 -   Right click → contextual menu
@@ -313,12 +314,14 @@ Potential interactions:
 MVP-0 support:
 
 -   Pinch zoom in/out, from 72% through a maximum of 160%
--   Two-finger horizontal scroll to orbit the scene within a comfortable angle
--   Two-finger vertical scroll to move forward through loaded rows and back toward the entrance
+-   Two-finger horizontal and diagonal scroll to orbit continuously through a full 360° yaw
+-   Two-finger vertical scroll to tilt the camera; clamp pitch before the view flips upside down
+-   Mouse drag to rotate the camera around the scene
+-   Visible Deeper/Entrance controls to move forward/back through loaded rows
 
-Natural drag/pan and inertial movement are later interaction experiments, not MVP-0 requirements.
+Inertial movement remains a later interaction experiment, not an MVP-0 requirement.
 
-Pinch changes camera distance only; it must not trigger additional filesystem scans. Zooming out should make more of the already-loaded receding rows visible. Keep a readable minimum card size and maximum zoom range. Horizontal scrolling changes camera yaw smoothly and within a bounded range so cards remain readable. Vertical scrolling advances the camera through the loaded depth rows; reverse the gesture to return toward the entrance. Bound travel to the visible scene depth and do not change selection or trigger a filesystem scan. Restore the default framing on folder navigation and provide a reset control. Preserve breadcrumbs, Back, and keyboard-accessible controls so gestures are never the only way to browse.
+Pinch changes camera distance only; it must not trigger additional filesystem scans. Zooming out should make more of the already-loaded receding rows visible. Keep a readable minimum card size and maximum zoom range. Two-axis scrolling and mouse drag orbit smoothly around the scene: yaw can complete full revolutions, while pitch is clamped before the camera flips. Diagonal input changes both axes. Rotation must not change selection or trigger a filesystem scan. Visible depth controls move forward/back through loaded rows; bound travel to the visible scene depth. Restore default framing on folder navigation and provide a reset control. Preserve breadcrumbs, Back, and keyboard-accessible controls so gestures are never the only way to browse.
 
 ### Keyboard
 
@@ -725,7 +728,7 @@ Implement only:
 11. Back navigation
 12. Smooth camera transitions
 13. Bounded spatial zoom up to 160% with trackpad pinch and accessible alternatives
-14. Gentle horizontal camera orbit and vertical depth travel with two-finger trackpad scroll and a reset view
+14. Full-yaw, two-axis camera orbit with trackpad scroll or mouse drag, pitch limits, and a reset view; accessible controls move through loaded depth
 
 The goal of MVP-0 is to prove the core spatial browsing concept.
 
@@ -764,8 +767,8 @@ MVP-0 is successful if a user can:
 3.  Understand the current directory
 4.  See folders arranged with meaningful depth
 5.  Zoom in and out to inspect nearer entries and reveal more of the loaded depth field
-6.  Orbit the view gently with horizontal trackpad scrolling and reset its angle
-7.  Move forward/back through loaded depth rows with vertical scrolling
+6.  Orbit through a full yaw revolution using two-axis trackpad scroll or mouse drag, tilt within safe limits, and reset the view
+7.  Move forward/back through loaded depth rows with accessible depth controls
 8.  Select a folder
 9.  Open the folder
 10. Visually travel into that folder

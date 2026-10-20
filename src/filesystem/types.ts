@@ -20,8 +20,15 @@ export interface DirectorySnapshot {
   truncated: boolean;
 }
 
+export interface SidebarLocation {
+  id: string;
+  name: string;
+}
+
 export interface FilesystemPort {
   openDefaultDirectory(): Promise<DirectorySnapshot>;
-  chooseRoot(): Promise<FileNode | null>;
+  listSidebarLocations(): Promise<SidebarLocation[]>;
+  openSidebarLocation(id: string): Promise<DirectorySnapshot>;
+  chooseRoot(): Promise<DirectorySnapshot | null>;
   listDirectory(path: string): Promise<DirectorySnapshot>;
 }
