@@ -33,6 +33,7 @@ export class ThreeViewport {
   private static readonly maxOrbitPitch = 1.42;
   private static readonly defaultOrbitPitch = 0.03;
   private static readonly wheelOrbitSensitivity = 0.0025;
+  private static readonly wheelDepthSensitivity = 0.004;
   private static readonly dragOrbitSensitivity = 0.005;
   private static readonly depthStep = 1.2;
   private static readonly depthFocusDistance = 8;
@@ -44,6 +45,7 @@ export class ThreeViewport {
   private readonly cards: CardHandle[] = [];
   private readonly motions: CardMotion[] = [];
   private sceneDepthPositions: THREE.Vector3[] = [];
+  private orbitCenter = new THREE.Vector3(0, -0.1, 0);
   private readonly clock = new THREE.Clock();
   private readonly reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   private frame = 0;
@@ -107,6 +109,7 @@ export class ThreeViewport {
     this.onActivate = onActivate;
     const enteringDirectory = this.currentDirectoryId !== null && this.currentDirectoryId !== projection.currentDirectoryId;
     this.sceneDepthPositions = projection.items.map((item) => item.position);
+    this.orbitCenter.copy(projection.cameraTarget);
     this.hasSceneItems = projection.items.length > 0;
     if (enteringDirectory) {
       this.setZoomLevel(1);
@@ -408,10 +411,12 @@ export class ThreeViewport {
       this.setZoomLevel(this.zoomLevel * Math.exp(-deltaY * 0.002));
       return;
     }
-    // Two-axis trackpad or wheel input orbits around the spatial field.
+    // Horizontal scrolling orbits around the center of the loaded spatial field;
+    // vertical scrolling travels through its depth layers.
     if (Math.abs(deltaX) > 1 || Math.abs(deltaY) > 1) {
       event.preventDefault();
-      this.orbitBy(deltaX, deltaY, ThreeViewport.wheelOrbitSensitivity);
+      if (Math.abs(deltaX) > 1) this.orbitBy(deltaX, 0, ThreeViewport.wheelOrbitSensitivity);
+      if (Math.abs(deltaY) > 1) this.moveThroughDepthBy(deltaY * ThreeViewport.wheelDepthSensitivity);
     }
   };
 
@@ -500,7 +505,7 @@ export class ThreeViewport {
     if (!this.hasSceneItems) return 0;
     const direction = this.orbitDirection(this.targetOrbitYaw, this.targetOrbitPitch);
     const deepestDistance = this.sceneDepthPositions.reduce(
-      (deepest, position) => Math.max(deepest, -position.dot(direction)),
+      (deepest, position) => Math.max(deepest, -position.clone().sub(this.orbitCenter).dot(direction)),
       0,
     );
     return Math.max(0, ThreeViewport.baseCameraZ / this.zoomLevel + deepestDistance - ThreeViewport.depthFocusDistance);
@@ -532,7 +537,7 @@ export class ThreeViewport {
 
   private positionCamera(distance: number, depth: number) {
     const direction = this.orbitDirection(this.orbitYaw, this.orbitPitch);
-    const target = direction.clone().multiplyScalar(-depth);
+    const target = this.orbitCenter.clone().addScaledVector(direction, -depth);
     this.camera.position.copy(target).addScaledVector(direction, distance);
     this.camera.lookAt(target);
   }

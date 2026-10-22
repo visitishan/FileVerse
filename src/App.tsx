@@ -291,7 +291,7 @@ export default function App() {
             </svg>
             <div className="scene-horizon" />
             <div className="scene-depth-caption"><span>SPATIAL DEPTH</span><i /><i /><i /></div>
-            <div className="scene-zoom-controls" role="group" aria-label="Spatial view controls" title="Pinch to zoom · two-axis scroll or drag to orbit · arrows move through depth">
+            <div className="scene-zoom-controls" role="group" aria-label="Spatial view controls" title="Pinch to zoom · horizontal scroll to orbit · vertical scroll through depth · drag to orbit">
               <button onClick={() => viewport.current?.zoomBy(-1)} disabled={zoomLevel <= 0.721} aria-label="Zoom out" title="Zoom out">−</button>
               <output aria-label="Zoom level">{Math.round(zoomLevel * 100)}%</output>
               <button onClick={() => viewport.current?.zoomBy(1)} disabled={zoomLevel >= 1.599} aria-label="Zoom in" title="Zoom in">+</button>

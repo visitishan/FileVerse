@@ -40,5 +40,7 @@ export function projectDirectory(current: FileNode, children: FileNode[]): Scene
     });
   });
 
-  return { currentDirectoryId: current.id, items, cameraTarget: new THREE.Vector3(0, -0.1, 0) };
+  const bounds = new THREE.Box3().setFromPoints(items.map(({ position }) => position));
+  const cameraTarget = items.length > 0 ? bounds.getCenter(new THREE.Vector3()) : new THREE.Vector3(0, -0.1, 0);
+  return { currentDirectoryId: current.id, items, cameraTarget };
 }
