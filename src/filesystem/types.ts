@@ -25,10 +25,16 @@ export interface SidebarLocation {
   name: string;
 }
 
+export interface TextPreview {
+  text: string;
+  truncated: boolean;
+}
+
 export interface FilesystemPort {
   openDefaultDirectory(): Promise<DirectorySnapshot>;
   listSidebarLocations(): Promise<SidebarLocation[]>;
   openSidebarLocation(id: string): Promise<DirectorySnapshot>;
   chooseRoot(): Promise<DirectorySnapshot | null>;
   listDirectory(path: string): Promise<DirectorySnapshot>;
+  previewTextFile(path: string): Promise<TextPreview>;
 }

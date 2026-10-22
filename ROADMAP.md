@@ -22,8 +22,8 @@
 | Stage | Outcome | State |
 |---|---|---|
 | 0. Project foundation | Product, architecture, and agent guidance are documented | Complete: specification, architecture, contributor rules, roadmap, and native smoke checklist are present |
-| 1. MVP-0 spatial prototype | See a folder's actual contents in depth, navigate into folders/back, zoom, orbit, and travel through loaded depth rows | In progress: startup/navigation, folder picker/cancel, spatial gestures, zoom bounds, depth controls, reset, empty/special/large folders, permission handling, symlink behavior, mouse drag, and native selected-root boundary have been checked; one extended diagonal-gesture selection invariant remains |
-| 2. File manager basics | Make browsing useful for everyday discovery | After spatial concept review |
+| 1. MVP-0 spatial prototype | See a folder's actual contents in depth, navigate into folders/back, zoom, orbit, and travel through loaded depth rows | Complete on macOS: native fixture checks and user-confirmed horizontal/diagonal trackpad gestures passed; Windows/Linux remain deferred to Stage 4 |
+| 2. File manager basics | Make browsing useful for everyday discovery | In progress: search and sorting are native-checked; bounded plain-text preview displays in the native app; edge-case checks remain |
 | 3. File operations | Safely perform common local file actions | After browsing behavior stabilizes |
 | 4. Platform completion | Verify and adapt behavior for macOS, Windows, and Linux | Incremental, with dedicated hardening stage |
 | 5. Additional storage | Explore network and cloud locations through adapters | Only after local filesystem experience is solid |
@@ -42,12 +42,12 @@ This is the repository's working checklist for contributor handoff. Update a row
 | Rust local filesystem adapter and normalized entries | Implemented; all 9 fixture tests pass for empty, missing, restricted, Unicode, symlink, root-boundary, and large directories | Native UI checks also passed for empty, Unicode/hidden names, restricted folder, symlink, and 301-entry truncation |
 | Home startup, common local sidebar locations, folder open/back, and breadcrumbs | Implemented | User-confirmed in the desktop app; picker selection and cancel are also reported working; permission and selected-root boundary checks passed in the native app |
 | Spatial cards and folder-entry transition | Implemented | Manually verified during MVP-0 use; continue to assess readability with representative directories |
-| Zoom, orbit, and loaded-depth controls | Implemented; horizontal scroll orbits around the loaded-stack center, vertical scroll travels through depth, and mouse drag controls yaw/pitch | Native build confirmed; vertical scrolling moved the camera into the loaded layers without changing the active folder. Confirm horizontal and diagonal scroll on the physical trackpad |
-| macOS native behavior | In progress | Physical horizontal/diagonal trackpad checks remain in [`docs/MVP0_NATIVE_SMOKE_CHECKLIST.md`](docs/MVP0_NATIVE_SMOKE_CHECKLIST.md) |
+| Zoom, orbit, and loaded-depth controls | Implemented; horizontal scroll orbits around the loaded-stack center, vertical scroll travels through depth, and mouse drag controls yaw/pitch | User-confirmed: horizontal and diagonal trackpad gestures work; vertical scroll and mouse drag leave the active folder unchanged |
+| macOS native behavior | Complete for Stage 1 | Native fixture checks and user-confirmed physical trackpad gestures are recorded in [`docs/MVP0_NATIVE_SMOKE_CHECKLIST.md`](docs/MVP0_NATIVE_SMOKE_CHECKLIST.md) |
 | Windows and Linux behavior | Deferred to Stage 4 | No Windows/Linux machine is currently available; do not claim platform support until checked |
-| Stage 2 features | Deferred | Do not begin search, previews, file operations, cloud storage, or watchers before the MVP-0 review gate |
+| Stage 2 features | In progress | Search/sorting are native-checked; previewing README.md works in the native app. Verify truncation and unsupported/binary rejection. Keep file operations, cloud storage, and watchers deferred |
 
-**Where to continue:** confirm horizontal and diagonal scrolling on the physical trackpad, including that gestures leave the active folder unchanged. Vertical scroll through loaded depth was checked in the native app; the selected-root boundary was verified. Then review Stage 1 acceptance criteria. Windows/Linux checks stay deferred to Stage 4. Do not start Stage 2 until the review gate says the spatial browsing model is ready.
+**Where to continue:** finish the bounded plain-text preview checks in [`docs/STAGE2_NATIVE_CHECKLIST.md`](docs/STAGE2_NATIVE_CHECKLIST.md): verify 64 KiB truncation and unsupported/binary rejection. A real UTF-8 Markdown file preview was confirmed in the native app. Current-folder filename search was native-checked for shortcut focus, positive match, and no-match behavior; sorting was native-checked for recently modified, largest first, and name order. Stage 1's macOS checks are complete based on native fixture verification and the user's physical horizontal/diagonal trackpad confirmation. Windows/Linux checks stay deferred to Stage 4.
 
 ---
 
@@ -218,9 +218,9 @@ These are experiments, not commitments. Each requires a clear user problem, priv
 
 ## Immediate next actions
 
-1. Complete the remaining macOS native checks using [`docs/MVP0_NATIVE_SMOKE_CHECKLIST.md`](docs/MVP0_NATIVE_SMOKE_CHECKLIST.md): horizontal/diagonal scroll orbit and gesture selection invariant.
-2. Re-run the Rust filesystem fixture suite if backend code changes; all 9 tests passed during the current smoke-check pass.
-3. Review the prototype against the Stage 1 acceptance criteria before expanding scope. Windows/Linux validation is deferred to Stage 4.
+1. Complete the preview edge-case checks in [`docs/STAGE2_NATIVE_CHECKLIST.md`](docs/STAGE2_NATIVE_CHECKLIST.md).
+2. Keep search and sorting scoped to already-loaded direct children; do not add recursive traversal or backend filesystem search.
+3. Windows/Linux validation remains deferred to Stage 4; retain the MVP-0 native checklist as evidence for macOS behavior.
 
 ## Change policy
 

@@ -32,12 +32,12 @@ Automated backend check: `cargo test` passed all 9 tests, covering empty/missing
 - [x] Pinch to zoom in and out. (User-confirmed.)
 - [x] Zoom buttons reach both 72% and 160%; Reset returns to 100%. (Native UI verified.)
 - [x] Orbit the scene through a full 360° yaw. (User-confirmed in the desktop app.)
-- [ ] Verify on the physical trackpad that horizontal scroll orbits around the center of the loaded card stack and diagonal scroll combines orbit with depth travel.
+- [x] Verify on the physical trackpad that horizontal scroll orbits around the center of the loaded card stack and diagonal scroll combines orbit with depth travel. (User-confirmed: both gestures work correctly.)
 - [x] Vertical scrolling moves the native camera into the loaded layers; the active folder stays unchanged. (Checked on a multi-row Home directory.)
 - [x] Primary-button mouse drag rotates the scene; dragging over empty scene space did not open a folder or change the current directory. (Native UI verified.)
 - [x] Use the on-screen depth controls to move through loaded rows. (User-confirmed.)
 - [x] Reset restores the default view. (User-confirmed and exercised during this check.)
-- [ ] Confirm horizontal and diagonal camera input leaves the active directory and selection unchanged.
+- [x] Confirm horizontal and diagonal camera input leaves the active directory and selection unchanged. (User-confirmed during the same gesture check.)
 
 ## Deferred platform checks
 

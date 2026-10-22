@@ -2,13 +2,19 @@
 
 **FileVerse is an experimental 3D desktop file browser that represents filesystem hierarchy as spatial depth.** It combines familiar folder navigation with a scene where files and folders appear as navigable cards.
 
-![FileVerse current preview](./Current%20Preview.png)
+<p align="center">
+  <img src="./screenshots/spatial-browser.jpg" alt="FileVerse spatial folder browser" width="32%" />
+  <img src="./screenshots/folder-search.jpg" alt="Searching the current folder in FileVerse" width="32%" />
+  <img src="./screenshots/text-preview.jpg" alt="Previewing a text file in FileVerse" width="32%" />
+</p>
 
-> This screenshot shows the current UI direction. Browser preview uses sample data; the Tauri desktop app browses local directories.
+<p align="center"><em>Spatial browsing · Current-folder search · Bounded text preview</em></p>
+
+These screenshots show the current native Tauri app. The browser preview uses sample data; the desktop app browses local directories.
 
 ## Project status
 
-**Current milestone: MVP-0 spatial filesystem prototype — in progress.** Core browsing and the prepared macOS folder fixtures have been checked in the native app. The selected-root boundary and vertical depth movement are verified; horizontal/diagonal scroll mapping still needs confirmation on the physical trackpad. Windows and Linux validation is intentionally deferred to the platform-completion milestone.
+**Current milestone: Stage 2 file manager basics — in progress.** MVP-0 spatial browsing and the prepared macOS folder fixtures have been checked in the native app, including horizontal and diagonal trackpad input (user-confirmed). Current-folder filename search and sorting are implemented and native-checked. Windows and Linux validation is intentionally deferred to the platform-completion milestone.
 
 | Area | Status |
 |---|---|
@@ -17,7 +23,10 @@
 | Spatial cards, folder navigation, Back, and breadcrumbs | Implemented; manually verified |
 | Zoom, centered orbit, and depth controls | Implemented; vertical scroll was checked in the native app moving through loaded layers, while horizontal scroll and drag orbit around the loaded stack center |
 | macOS empty, special-name, large-folder, permission, symlink, and mouse-drag checks | Verified in the Tauri desktop app; 9 Rust filesystem tests pass |
-| Selected-root boundary; horizontal/diagonal gesture checks | Root boundary verified; physical trackpad checks remain in the [MVP-0 smoke checklist](./docs/MVP0_NATIVE_SMOKE_CHECKLIST.md) |
+| Selected-root boundary; horizontal/diagonal gesture checks | Verified; horizontal/diagonal gestures were user-confirmed in the [MVP-0 smoke checklist](./docs/MVP0_NATIVE_SMOKE_CHECKLIST.md) |
+| Current-folder filename search | Implemented and native-checked for shortcut focus, matching results, and no-match state |
+| Current-folder sorting | Implemented and native-checked for name, modified time, and size ordering |
+| Bounded plain-text preview | README.md preview verified in the native app; 64 KiB truncation and rejection checks remain |
 | Windows and Linux support validation | Deferred to the platform-completion milestone |
 
 The [roadmap](./ROADMAP.md) is the source of truth for milestone progress and next steps. Keep it current as work is verified so a new contributor can see what is complete and where to continue.
@@ -29,7 +38,7 @@ The [roadmap](./ROADMAP.md) is the source of truth for milestone progress and ne
 - Horizontal two-finger scrolling rotates the loaded stack around its center; vertical scrolling moves through its depth layers. Drag with the primary mouse button to control yaw and pitch. Yaw can complete full revolutions; pitch is bounded so the view does not flip.
 - Use the on-screen depth controls to move through the already-loaded scene rows; Reset restores the default view.
 
-MVP-0 is focused on proving spatial browsing. Search, previews, file operations, cloud storage, filesystem watchers, recursive indexing, and other production file-manager features are deferred.
+MVP-0 is focused on proving spatial browsing. Stage 2 adds filename search and sorting for the currently open folder, plus a bounded preview for selected plain-text files. File operations, cloud storage, filesystem watchers, recursive indexing, and other production file-manager features remain deferred.
 
 ## Run locally
 

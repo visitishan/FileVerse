@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DirectorySnapshot, FilesystemPort, SidebarLocation } from "./types";
+import type { DirectorySnapshot, FilesystemPort, SidebarLocation, TextPreview } from "./types";
 
 export const isNativeRuntime = () => "__TAURI_INTERNALS__" in window;
 
@@ -18,5 +18,8 @@ export const tauriFilesystem: FilesystemPort = {
   },
   listDirectory(path: string) {
     return invoke<DirectorySnapshot>("list_directory", { path });
+  },
+  previewTextFile(path: string) {
+    return invoke<TextPreview>("preview_text_file", { path });
   },
 };

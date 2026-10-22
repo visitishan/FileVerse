@@ -2,6 +2,7 @@ use serde::Serialize;
 use std::{
     collections::HashSet,
     fs,
+    io::Read,
     path::{Path, PathBuf},
     sync::Mutex,
     time::UNIX_EPOCH,
@@ -9,6 +10,11 @@ use std::{
 use tauri::Manager;
 
 const DIRECTORY_LIMIT: usize = 300;
+const TEXT_PREVIEW_BYTE_LIMIT: usize = 64 * 1024;
+const TEXT_PREVIEW_EXTENSIONS: &[&str] = &[
+    "txt", "md", "markdown", "json", "csv", "log", "yaml", "yml", "toml", "xml", "html", "css",
+    "js", "jsx", "ts", "tsx", "rs",
+];
 
 #[derive(Default)]
 struct FilesystemState {
@@ -44,6 +50,13 @@ struct DirectorySnapshotDto {
 struct SidebarLocationDto {
     id: &'static str,
     name: &'static str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TextPreviewDto {
+    text: String,
+    truncated: bool,
 }
 
 fn node_for(path: &Path) -> Result<FileNodeDto, String> {
@@ -219,6 +232,84 @@ fn list_directory(
     read_directory(directory_path, root)
 }
 
+#[tauri::command]
+fn preview_text_file(
+    path: String,
+    state: tauri::State<'_, FilesystemState>,
+) -> Result<TextPreviewDto, String> {
+    let root_guard = state
+        .selected_root
+        .lock()
+        .map_err(|_| "FILESYSTEM_ERROR".to_string())?;
+    let root = root_guard
+        .as_ref()
+        .ok_or_else(|| "ROOT_NOT_SELECTED".to_string())?;
+    let file_path = resolve_scoped_path(PathBuf::from(path), root)?;
+    let extension = file_path
+        .extension()
+        .and_then(|part| part.to_str())
+        .map(str::to_ascii_lowercase)
+        .ok_or_else(|| "PREVIEW_UNSUPPORTED".to_string())?;
+    if !TEXT_PREVIEW_EXTENSIONS.contains(&extension.as_str()) {
+        return Err("PREVIEW_UNSUPPORTED".into());
+    }
+    let metadata = fs::symlink_metadata(&file_path).map_err(|error| map_io_error(&error))?;
+    if metadata.file_type().is_symlink() {
+        return Err("SYMLINK_NOT_ENTERABLE".into());
+    }
+    if !metadata.is_file() {
+        return Err("NOT_FILE".into());
+    }
+    let file = fs::File::open(&file_path).map_err(|error| map_io_error(&error))?;
+    let mut bytes = Vec::with_capacity(TEXT_PREVIEW_BYTE_LIMIT + 1);
+    file.take((TEXT_PREVIEW_BYTE_LIMIT + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|error| map_io_error(&error))?;
+    let truncated = bytes.len() > TEXT_PREVIEW_BYTE_LIMIT;
+    if truncated {
+        bytes.truncate(TEXT_PREVIEW_BYTE_LIMIT);
+    }
+    let text = match std::str::from_utf8(&bytes) {
+        Ok(text) => text.to_owned(),
+        Err(error) if truncated && error.error_len().is_none() => {
+            bytes.truncate(error.valid_up_to());
+            std::str::from_utf8(&bytes)
+                .map_err(|_| "PREVIEW_NOT_UTF8".to_string())?
+                .to_owned()
+        }
+        Err(_) => return Err("PREVIEW_NOT_UTF8".into()),
+    };
+    Ok(TextPreviewDto { text, truncated })
+}
+
+fn resolve_scoped_path(path: PathBuf, root: &Path) -> Result<PathBuf, String> {
+    if !path.starts_with(root) {
+        return Err("OUTSIDE_SELECTED_ROOT".into());
+    }
+    let relative = path
+        .strip_prefix(root)
+        .map_err(|_| "OUTSIDE_SELECTED_ROOT".to_string())?;
+    let mut checked_path = PathBuf::from(root);
+    for component in relative.components() {
+        match component {
+            std::path::Component::Normal(part) => checked_path.push(part),
+            _ => return Err("OUTSIDE_SELECTED_ROOT".into()),
+        }
+        if fs::symlink_metadata(&checked_path)
+            .map_err(|error| map_io_error(&error))?
+            .file_type()
+            .is_symlink()
+        {
+            return Err("SYMLINK_NOT_ENTERABLE".into());
+        }
+    }
+    let canonical_path = fs::canonicalize(checked_path).map_err(|error| map_io_error(&error))?;
+    if !canonical_path.starts_with(root) {
+        return Err("OUTSIDE_SELECTED_ROOT".into());
+    }
+    Ok(canonical_path)
+}
+
 fn read_directory(directory_path: PathBuf, root: &Path) -> Result<DirectorySnapshotDto, String> {
     if !directory_path.starts_with(root) {
         return Err("OUTSIDE_SELECTED_ROOT".into());
@@ -321,7 +412,8 @@ pub fn run() {
             list_directory,
             open_default_directory,
             list_sidebar_locations,
-            open_sidebar_location
+            open_sidebar_location,
+            preview_text_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running FileVerse");

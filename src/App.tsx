@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { sampleChildren, sampleSnapshot } from "./data/sampleFilesystem";
-import type { DirectorySnapshot, FileNode, SidebarLocation } from "./filesystem/types";
+import type { DirectorySnapshot, FileNode, SidebarLocation, TextPreview } from "./filesystem/types";
 import { isNativeRuntime, tauriFilesystem } from "./filesystem/tauriFilesystem";
 import { projectDirectory } from "./scene/SpatialScene";
 import { ThreeViewport } from "./scene/ThreeViewport";
@@ -11,6 +11,7 @@ const prettyDate = (value: string | null) => value
 const prettySize = (value: number | null) => value === null
   ? "Folder"
   : value < 1024 ? `${value} B` : `${(value / 1024).toFixed(1)} KB`;
+const previewableExtensions = new Set(["txt", "md", "markdown", "json", "csv", "log", "yaml", "yml", "toml", "xml", "html", "css", "js", "jsx", "ts", "tsx", "rs"]);
 const errorMessage = (cause: unknown) => {
   const message = String(cause);
   if (message.includes("PERMISSION_DENIED")) return "FileVerse can’t access this folder. Check its permissions and try again.";
@@ -18,12 +19,19 @@ const errorMessage = (cause: unknown) => {
   if (message.includes("NOT_DIRECTORY")) return "That location is not a folder.";
   if (message.includes("UNSUPPORTED_PATH_ENCODING")) return "This path contains characters that this platform cannot display.";
   if (message.includes("LOCATION_UNAVAILABLE")) return "That location isn’t available on this device.";
+  if (message.includes("PREVIEW_UNSUPPORTED")) return "This file type can’t be previewed yet.";
+  if (message.includes("PREVIEW_NOT_UTF8")) return "This file is not valid UTF-8 text and can’t be previewed.";
+  if (message.includes("OUTSIDE_SELECTED_ROOT")) return "This file is outside the selected folder boundary.";
+  if (message.includes("SYMLINK_NOT_ENTERABLE")) return "FileVerse won’t preview files reached through a symbolic link.";
+  if (message.includes("NOT_FILE")) return "That item is not a regular file.";
+  if (message.includes("FILESYSTEM_ERROR")) return "FileVerse couldn’t read this preview.";
   return "The folder could not be opened. Please try another location.";
 };
 
 export default function App() {
   const viewportHost = useRef<HTMLDivElement>(null);
   const viewport = useRef<ThreeViewport | null>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   const [viewState, setViewState] = useState({ zoom: 1, depth: 0, maxDepth: 0 });
   const zoomLevel = viewState.zoom;
   const [nativeMode] = useState(isNativeRuntime);
@@ -49,15 +57,34 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
+  const [preview, setPreview] = useState<(TextPreview & { name: string }) | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortMode, setSortMode] = useState("name-asc");
   const requestId = useRef(0);
+  const previewRequestId = useRef(0);
 
-  const projection = useMemo(() => projectDirectory(current, entries), [current, entries]);
+  const visibleEntries = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase();
+    return query ? entries.filter((node) => node.name.toLocaleLowerCase().includes(query)) : entries;
+  }, [entries, searchQuery]);
+  const displayEntries = useMemo(() => {
+    const byName = (a: FileNode, b: FileNode) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true });
+    return [...visibleEntries].sort((a, b) => {
+      if (sortMode === "name-desc") return byName(b, a);
+      if (sortMode === "modified") return (b.modifiedAt ? Date.parse(b.modifiedAt) : -Infinity) - (a.modifiedAt ? Date.parse(a.modifiedAt) : -Infinity) || byName(a, b);
+      if (sortMode === "size") return (b.sizeBytes ?? -1) - (a.sizeBytes ?? -1) || byName(a, b);
+      if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
+      return byName(a, b);
+    });
+  }, [sortMode, visibleEntries]);
+  const projection = useMemo(() => projectDirectory(current, displayEntries), [current, displayEntries]);
   const breadcrumbs = useMemo(() => (hasSelectedRoot ? [...stack.map((snapshot) => snapshot.directory), current] : []).map((node, index, nodes) => ({
     name: node.name,
     path: node.path,
     current: index === nodes.length - 1,
   })), [current, hasSelectedRoot, stack]);
-  const sceneNodes = entries;
+  const sceneNodes = displayEntries;
   const selectedItemCount = selected.id === current.id && selected.kind === "directory"
     ? entries.length
     : nativeMode ? 0 : (sampleChildren[selected.id]?.length ?? 0);
@@ -194,6 +221,35 @@ export default function App() {
     if (nativeMode) void loadDefaultDirectory();
   }, [nativeMode]);
 
+  useEffect(() => setSearchQuery(""), [current.id]);
+  useEffect(() => {
+    previewRequestId.current += 1;
+    setPreview(null);
+    setPreviewBusy(false);
+  }, [current.id]);
+
+  useEffect(() => {
+    if (!searchQuery.trim()) return;
+    if (displayEntries.some((node) => node.id === selected.id)) return;
+    setSelected(displayEntries[0] ?? current);
+  }, [current, displayEntries, searchQuery, selected.id]);
+
+  useEffect(() => {
+    const onFind = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && preview) {
+        setPreview(null);
+        previewRequestId.current += 1;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        searchInput.current?.focus();
+        searchInput.current?.select();
+      }
+    };
+    window.addEventListener("keydown", onFind);
+    return () => window.removeEventListener("keydown", onFind);
+  }, [preview]);
+
   useEffect(() => {
     if (!nativeMode) return;
     let cancelled = false;
@@ -223,6 +279,25 @@ export default function App() {
   }, [projection, sceneNodes, selected.id]);
 
   const openSelected = () => openNode(selected);
+  const canPreview = selected.kind === "file" && !!selected.extension && previewableExtensions.has(selected.extension.toLowerCase());
+  const showPreview = async () => {
+    if (!canPreview) return;
+    if (!nativeMode) {
+      setError("Text preview is available in the FileVerse desktop app.");
+      return;
+    }
+    const request = ++previewRequestId.current;
+    setPreviewBusy(true);
+    setError(null);
+    try {
+      const result = await tauriFilesystem.previewTextFile(selected.path);
+      if (request === previewRequestId.current) setPreview({ ...result, name: selected.name });
+    } catch (cause) {
+      if (request === previewRequestId.current) setError(errorMessage(cause));
+    } finally {
+      if (request === previewRequestId.current) setPreviewBusy(false);
+    }
+  };
 
   return (
     <main className="app-window">
@@ -246,7 +321,10 @@ export default function App() {
             ))}
           </nav>
           <div className="topbar-tools">
-            <label className="search-box"><span className="search-icon">⌕</span><input aria-label="Search this folder" placeholder={`Search in ${current.name}…`} disabled /><kbd>⌘ F</kbd></label>
+            <div className="search-box"><span className="search-icon" aria-hidden="true">⌕</span><input ref={searchInput} aria-label="Search this folder" placeholder={`Search in ${current.name}…`} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />{searchQuery && <button className="search-clear" type="button" onClick={() => { setSearchQuery(""); searchInput.current?.focus(); }} aria-label="Clear search">×</button>}<kbd>{navigator.platform.includes("Mac") ? "⌘ F" : "Ctrl F"}</kbd></div>
+            <select className="sort-select" aria-label="Sort current folder" value={sortMode} onChange={(event) => setSortMode(event.target.value)} title="Sort the current folder">
+              <option value="name-asc">Name A–Z</option><option value="name-desc">Name Z–A</option><option value="modified">Recently modified</option><option value="size">Largest first</option>
+            </select>
             <button className="open-folder-button" onClick={() => nativeMode ? chooseFolder() : setError("Choose Folder is available in the FileVerse desktop app.")} disabled={busy}>Open Folder</button>
             <div className="view-switch" aria-label="View mode"><button className="view-mode selected-view" aria-label="Spatial view">▦</button><button className="view-mode" aria-label="List view" disabled>▤</button></div>
             <button className="tool-button" aria-label="View settings" title="View settings" disabled>☷</button>
@@ -303,10 +381,10 @@ export default function App() {
             <div className="scene-viewport" ref={viewportHost} />
             <div className="ground-reflection" />
 
-            {hasSelectedRoot && !busy && entries.length === 0 && <div className="empty-folder-state">
-              <span aria-hidden="true">▱</span>
-              <strong>This folder is empty</strong>
-              <small>Choose another folder or go back to continue exploring.</small>
+            {hasSelectedRoot && !busy && visibleEntries.length === 0 && <div className="empty-folder-state">
+              <span aria-hidden="true">{entries.length === 0 ? "▱" : "⌕"}</span>
+              <strong>{entries.length === 0 ? "This folder is empty" : "No matching items"}</strong>
+              <small>{entries.length === 0 ? "Choose another folder or go back to continue exploring." : `No names in ${current.name} match “${searchQuery.trim()}”.`}</small>
             </div>}
 
             {nativeMode && !hasSelectedRoot && <div className="choose-root-prompt">
@@ -316,7 +394,7 @@ export default function App() {
             </div>}
 
             <div className="scene-accessible-list" role="region" aria-label={`Keyboard navigation items in ${current.name}`}>
-              {entries.map((node) => (
+              {displayEntries.map((node) => (
                 <button key={node.id} onFocus={() => setSelected(node)} onClick={() => setSelected(node)} onKeyDown={(event) => {
                   if (event.key === "Enter" && node.kind === "directory") openNode(node);
                 }}>
@@ -339,18 +417,23 @@ export default function App() {
               </div>
               <div className="dock-actions">
                 <button className="dock-action open-action" onClick={openSelected} disabled={selected.kind !== "directory" || selected.id === current.id} title={selected.id === current.id ? "This folder is already open" : selected.kind !== "directory" ? "Select a folder to open it" : "Open selected folder"}><span>▱</span><small>{selected.id === current.id ? "Current" : "Open"}</small></button>
-                <button className="dock-action" disabled title="Quick Look is planned for a later milestone"><span>◉</span><small>Quick Look</small></button>
+                <button className="dock-action" onClick={() => void showPreview()} disabled={!canPreview || previewBusy} title={canPreview ? "Preview this text file (up to 64 KB)" : "Select a supported text file to preview"}><span>◉</span><small>{previewBusy ? "Loading…" : "Preview"}</small></button>
                 <button className="dock-action" disabled title="New Folder is planned for a later milestone"><span>▱<sup>+</sup></span><small>New Folder</small></button>
                 <button className="dock-action" disabled title="Sharing is planned for a later milestone"><span>↥</span><small>Share</small></button>
                 <button className="dock-action" disabled title="Get Info is planned for a later milestone"><span>ⓘ</span><small>Get Info</small></button>
                 <button className="dock-more" disabled aria-label="More actions">•••</button>
               </div>
             </section>
+            {preview && <section className="text-preview-panel" role="dialog" aria-modal="false" aria-label={`Text preview: ${preview.name}`}>
+              <header><div><strong>{preview.name}</strong><small>Text preview · up to 64 KB</small></div><button onClick={() => { setPreview(null); previewRequestId.current += 1; }} aria-label="Close preview">×</button></header>
+              <pre>{preview.text}</pre>
+              {preview.truncated && <footer>Preview limited to the first 64 KB.</footer>}
+            </section>}
           </div>
         </section>
       </div>
       {error && <div className="filesystem-error" role="alert"><span>{error}</span><button onClick={() => setError(null)} aria-label="Dismiss error">×</button></div>}
-      <div className="statusbar"><span><i /> {busy ? "Reading folder…" : nativeMode ? hasSelectedRoot ? "Local filesystem" : "Waiting for a folder" : "Local spatial preview"}</span><span>{truncated ? `Showing first 300 of a large folder · ${entries.length} loaded` : hasSelectedRoot ? `${entries.length} items${entries.length > 32 ? " · first 32 in spatial view; all available in keyboard list" : ""} · ${nativeMode ? "Local folder" : "Sample data"}` : nativeMode ? "Loading Home folder" : "Sample data"}</span></div>
+      <div className="statusbar"><span><i /> {busy ? "Reading folder…" : nativeMode ? hasSelectedRoot ? "Local filesystem" : "Waiting for a folder" : "Local spatial preview"}</span><span>{searchQuery.trim() ? `${visibleEntries.length} matches in loaded items · ` : ""}{truncated ? `Showing first 300 of a large folder · ${entries.length} loaded` : hasSelectedRoot ? `${entries.length} items${entries.length > 32 ? " · first 32 in spatial view; all available in keyboard list" : ""} · ${nativeMode ? "Local folder" : "Sample data"}` : nativeMode ? "Loading Home folder" : "Sample data"}</span></div>
     </main>
   );
 }
