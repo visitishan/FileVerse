@@ -2,13 +2,17 @@
 
 **FileVerse is an experimental 3D desktop file browser that represents filesystem hierarchy as spatial depth.** It combines familiar folder navigation with a scene where files and folders appear as navigable cards.
 
-<p align="center">
-  <img src="./screenshots/spatial-browser.jpg" alt="FileVerse spatial folder browser" width="32%" />
-  <img src="./screenshots/folder-search.jpg" alt="Searching the current folder in FileVerse" width="32%" />
-  <img src="./screenshots/text-preview.jpg" alt="Previewing a text file in FileVerse" width="32%" />
-</p>
+### Spatial browsing
 
-<p align="center"><em>Spatial browsing · Current-folder search · Bounded text preview</em></p>
+![FileVerse spatial folder browser](./screenshots/spatial-browser.jpg)
+
+### Current-folder search
+
+![Searching the current folder in FileVerse](./screenshots/folder-search.jpg)
+
+### Bounded text preview
+
+![Previewing a text file in FileVerse](./screenshots/text-preview.jpg)
 
 These screenshots show the current native Tauri app. The browser preview uses sample data; the desktop app browses local directories.
 
