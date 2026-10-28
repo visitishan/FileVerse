@@ -19,4 +19,15 @@ Use a disposable fixture as the selected root. Do not run mutation checks agains
 - [x] Cancel the rename dialog and confirm the filesystem stays unchanged. (Native UI verified.)
 - [x] Backend fixture checks cover successful file rename, collisions, invalid names, root and out-of-root boundaries, and symlink rejection. (`cargo test`.)
 
+## Copy one regular file — macOS
+
+Use a disposable selected root and a source file that is safe to duplicate.
+
+- [x] Select a regular file, choose a nested destination inside the selected root, and confirm the copy appears there with the same name and contents. (Native UI verified; source and copy compared byte-for-byte.)
+- [x] Cancel the destination picker and confirm the existing destination remains unchanged. (Native UI verified; fixture contents checked.)
+- [x] Choose a destination that already contains the same name; confirm FileVerse reports the collision and preserves both files. (Native UI and backend fixture verified.)
+- [x] Select a symlink and confirm Copy is unavailable. Backend rejects symlink sources. (Native UI and Rust fixture verified.)
+- [x] Choose a folder outside the selected root and confirm the backend rejects the destination without writing there. (Native UI and Rust fixture verified.)
+- [x] Re-enter the nested destination and confirm the copied file appears in the refreshed listing; completion message names the destination. (Native UI verified.)
+
 Windows and Linux checks remain deferred to Stage 4.

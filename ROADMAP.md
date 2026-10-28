@@ -39,7 +39,7 @@ This is the repository's working checklist for contributor handoff. Update a row
 |---|---|---|
 | Product and technical foundation | Complete | Spec, architecture, contributor rules, and roadmap agree on the MVP-0 boundary |
 | Tauri + React/TypeScript + Three.js application | Implemented | `npm run build` passes; run on the target desktop OS before release |
-| Rust local filesystem adapter and normalized entries | Implemented; all 9 fixture tests pass for empty, missing, restricted, Unicode, symlink, root-boundary, and large directories | Native UI checks also passed for empty, Unicode/hidden names, restricted folder, symlink, and 301-entry truncation |
+| Rust local filesystem adapter and normalized entries | Implemented; all 28 fixture tests pass for filesystem access, preview safety, and file operations | Native UI checks also passed for empty, Unicode/hidden names, restricted folder, symlink, and 301-entry truncation |
 | Home startup, common local sidebar locations, folder open/back, and breadcrumbs | Implemented | User-confirmed in the desktop app; picker selection and cancel are also reported working; permission and selected-root boundary checks passed in the native app |
 | Spatial cards and folder-entry transition | Implemented | Manually verified during MVP-0 use; continue to assess readability with representative directories |
 | Zoom, orbit, and loaded-depth controls | Implemented; horizontal scroll orbits around the loaded-stack center, vertical scroll travels through depth, and mouse drag controls yaw/pitch | User-confirmed: horizontal and diagonal trackpad gestures work; vertical scroll and mouse drag leave the active folder unchanged |
@@ -48,8 +48,9 @@ This is the repository's working checklist for contributor handoff. Update a row
 | Stage 2 features | Complete on macOS | Search/sorting and bounded text preview are native-checked; keyboard list is reachable through Tab; preview truncation, unsupported types, binary rejection, symlink handling, and root boundary are recorded in [`docs/STAGE2_NATIVE_CHECKLIST.md`](docs/STAGE2_NATIVE_CHECKLIST.md) |
 | Stage 3 first operation: create folder | Implemented and native-verified | Disposable fixture verified successful creation and refreshed listing; cancel made no changes; invalid separators and duplicate names showed clear errors. See [`docs/STAGE3_NATIVE_CHECKLIST.md`](docs/STAGE3_NATIVE_CHECKLIST.md) |
 | Stage 3 second operation: rename | Implemented and native-verified | Disposable fixture verified file/folder rename, cancel, invalid-name rejection, and collision handling; backend also rejects root, symlink, and out-of-root paths |
+| Stage 3 third operation: copy file | Implemented and native-verified on macOS | Copies one selected regular file to a chosen folder inside the selected root, rejects symlinks and name collisions, and refreshes the destination snapshot. Recursive folder copy is out of scope. See [`docs/STAGE3_NATIVE_CHECKLIST.md`](docs/STAGE3_NATIVE_CHECKLIST.md) |
 
-**Where to continue:** plan a bounded Copy slice for a selected regular file, with destination selection inside the selected root, collision rejection, and post-copy refresh. Decide recursive folder-copy behavior before exposing folder copy. Keep cloud storage, watchers, and Windows/Linux validation deferred to their later stages.
+**Where to continue:** choose and define the next Stage 3 operation before implementation. Move and delete have different safety and recovery behavior; specify the boundary, collision, confirmation, and undo expectations first. Keep cloud storage, watchers, and Windows/Linux validation deferred to their later stages.
 
 ---
 
@@ -221,7 +222,7 @@ These are experiments, not commitments. Each requires a clear user problem, priv
 
 ## Immediate next actions
 
-1. Define and implement safe file copy for one selected regular file; keep recursive folder copy out until its limits and error behavior are specified.
+1. Choose the next Stage 3 operation and define its safety and recovery behavior before implementation.
 2. Keep search and sorting scoped to already-loaded direct children; do not add recursive traversal or backend filesystem search.
 3. Windows/Linux validation remains deferred to Stage 4; retain the MVP-0 and Stage 2 native checklists as evidence for macOS behavior.
 

@@ -28,4 +28,7 @@ export const tauriFilesystem: FilesystemPort = {
   renameEntry(path: string, name: string) {
     return invoke<DirectorySnapshot>("rename_entry", { path, name });
   },
+  copySelectedFile(path: string) {
+    return invoke<DirectorySnapshot | null>("copy_selected_file", { path });
+  },
 };

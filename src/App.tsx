@@ -26,10 +26,10 @@ const errorMessage = (cause: unknown) => {
   if (message.includes("ROOT_CANNOT_RENAME")) return "Choose an item inside this folder to rename.";
   if (message.includes("NOT_RENAMEABLE")) return "This item can’t be renamed in FileVerse.";
   if (message.includes("OUTSIDE_SELECTED_ROOT")) return "This file is outside the selected folder boundary.";
-  if (message.includes("SYMLINK_NOT_ENTERABLE")) return "FileVerse won’t preview files reached through a symbolic link.";
+  if (message.includes("SYMLINK_NOT_ENTERABLE")) return "FileVerse won’t follow symbolic links for this action.";
   if (message.includes("NOT_FILE")) return "That item is not a regular file.";
-  if (message.includes("FILESYSTEM_ERROR")) return "FileVerse couldn’t read this preview.";
-  return "The folder could not be opened. Please try another location.";
+  if (message.includes("FILESYSTEM_ERROR")) return "FileVerse couldn’t complete this filesystem action.";
+  return "This action could not be completed. Please try again.";
 };
 
 export default function App() {
@@ -73,6 +73,8 @@ export default function App() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameName, setRenameName] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
+  const [copyBusy, setCopyBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState("name-asc");
   const requestId = useRef(0);
@@ -378,6 +380,28 @@ export default function App() {
     }
   };
 
+  const copySelectedFile = async () => {
+    if (!nativeMode || selected.kind !== "file" || selected.isSymlink || copyBusy) return;
+    const source = selected;
+    setCopyBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const snapshot = await tauriFilesystem.copySelectedFile(source.path);
+      if (!snapshot) return;
+      if (snapshot.directory.path === current.path) {
+        setEntries(snapshot.children);
+        setTruncated(snapshot.truncated);
+        setSelected(snapshot.children.find((node) => node.name === source.name) ?? source);
+      }
+      setNotice(`Copied “${source.name}” to ${snapshot.directory.name}.`);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setCopyBusy(false);
+    }
+  };
+
   return (
     <main className="app-window">
       <header className="topbar">
@@ -497,6 +521,7 @@ export default function App() {
               <div className="dock-actions">
                 <button className="dock-action open-action" onClick={openSelected} disabled={selected.kind !== "directory" || selected.id === current.id} title={selected.id === current.id ? "This folder is already open" : selected.kind !== "directory" ? "Select a folder to open it" : "Open selected folder"}><span>▱</span><small>{selected.id === current.id ? "Current" : "Open"}</small></button>
                 <button className="dock-action" onClick={() => void showPreview()} disabled={!canPreview || previewBusy} title={canPreview ? "Preview this text file (up to 64 KB)" : "Select a supported text file to preview"}><span>◉</span><small>{previewBusy ? "Loading…" : "Preview"}</small></button>
+                <button className="dock-action" onClick={() => void copySelectedFile()} disabled={!nativeMode || selected.kind !== "file" || selected.isSymlink || busy || copyBusy} title={selected.kind === "file" && !selected.isSymlink ? "Copy this file to a folder inside the selected root" : "Select a regular file to copy"}><span>▧</span><small>{copyBusy ? "Copying…" : "Copy"}</small></button>
                 <button ref={createFolderButton} className="dock-action" onClick={() => { setError(null); setCreateFolderOpen(true); }} disabled={!nativeMode || !hasSelectedRoot || busy || createFolderBusy} title="Create a folder in the current directory"><span>▱<sup>+</sup></span><small>New Folder</small></button>
                 <button ref={renameButton} className="dock-action" onClick={() => { setError(null); setRenameName(selected.name); setRenameOpen(true); }} disabled={!nativeMode || !hasSelectedRoot || selected.id === current.id || selected.isSymlink || selected.kind === "other" || busy || renameBusy} title={selected.id === current.id ? "Select an item inside this folder to rename" : "Rename selected item"}><span>✎</span><small>Rename</small></button>
                 <button className="dock-action" disabled title="Sharing is planned for a later milestone"><span>↥</span><small>Share</small></button>
@@ -559,7 +584,7 @@ export default function App() {
         </section>
       </div>
       {error && <div className="filesystem-error" role="alert"><span>{error}</span><button onClick={() => setError(null)} aria-label="Dismiss error">×</button></div>}
-      <div className="statusbar"><span><i /> {busy ? "Reading folder…" : nativeMode ? hasSelectedRoot ? "Local filesystem" : "Waiting for a folder" : "Local spatial preview"}</span><span>{searchQuery.trim() ? `${visibleEntries.length} matches in loaded items · ` : ""}{truncated ? `Showing first 300 of a large folder · ${entries.length} loaded` : hasSelectedRoot ? `${entries.length} items${entries.length > 32 ? " · first 32 in spatial view; all available in keyboard list" : ""} · ${nativeMode ? "Local folder" : "Sample data"}` : nativeMode ? "Loading Home folder" : "Sample data"}</span></div>
+      <div className="statusbar"><span><i /> {busy ? "Reading folder…" : nativeMode ? hasSelectedRoot ? "Local filesystem" : "Waiting for a folder" : "Local spatial preview"}</span><span>{notice ?? (searchQuery.trim() ? `${visibleEntries.length} matches in loaded items · ` : "")}{notice ? "" : truncated ? `Showing first 300 of a large folder · ${entries.length} loaded` : hasSelectedRoot ? `${entries.length} items${entries.length > 32 ? " · first 32 in spatial view; all available in keyboard list" : ""} · ${nativeMode ? "Local folder" : "Sample data"}` : nativeMode ? "Loading Home folder" : "Sample data"}</span></div>
     </main>
   );
 }

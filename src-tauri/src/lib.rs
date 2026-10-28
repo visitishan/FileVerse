@@ -279,6 +279,79 @@ fn rename_entry(
     rename_entry_in_root(PathBuf::from(path), &name, root)
 }
 
+#[tauri::command]
+async fn copy_selected_file(
+    path: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, FilesystemState>,
+) -> Result<Option<DirectorySnapshotDto>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let root = {
+        let root_guard = state
+            .selected_root
+            .lock()
+            .map_err(|_| "FILESYSTEM_ERROR".to_string())?;
+        root_guard
+            .as_ref()
+            .ok_or_else(|| "ROOT_NOT_SELECTED".to_string())?
+            .clone()
+    };
+    let source = PathBuf::from(path);
+    let selected = app
+        .dialog()
+        .file()
+        .set_directory(&root)
+        .blocking_pick_folder();
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    let destination = selected
+        .into_path()
+        .map_err(|_| "UNSUPPORTED_PATH_ENCODING".to_string())?;
+    copy_file_into_root(source, destination, &root).map(Some)
+}
+
+fn copy_file_into_root(
+    source: PathBuf,
+    destination: PathBuf,
+    root: &Path,
+) -> Result<DirectorySnapshotDto, String> {
+    let source = resolve_scoped_path(source, root)?;
+    let destination = resolve_scoped_path(destination, root)?;
+    let source_metadata = fs::symlink_metadata(&source).map_err(|error| map_io_error(&error))?;
+    if source_metadata.file_type().is_symlink() {
+        return Err("SYMLINK_NOT_ENTERABLE".into());
+    }
+    if !source_metadata.is_file() {
+        return Err("NOT_FILE".into());
+    }
+    let destination_metadata =
+        fs::symlink_metadata(&destination).map_err(|error| map_io_error(&error))?;
+    if !destination_metadata.is_dir() {
+        return Err("NOT_DIRECTORY".into());
+    }
+    let file_name = source.file_name().ok_or_else(|| "NOT_FILE".to_string())?;
+    let target = destination.join(file_name);
+    let mut target_file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&target)
+        .map_err(|error| match error.kind() {
+            std::io::ErrorKind::AlreadyExists => "ALREADY_EXISTS".to_string(),
+            _ => map_io_error(&error),
+        })?;
+    let copy_result = (|| {
+        let mut source_file = fs::File::open(&source).map_err(|error| map_io_error(&error))?;
+        std::io::copy(&mut source_file, &mut target_file).map_err(|error| map_io_error(&error))?;
+        target_file.sync_all().map_err(|error| map_io_error(&error))
+    })();
+    if let Err(error) = copy_result {
+        let _ = fs::remove_file(&target);
+        return Err(error);
+    }
+    read_directory(destination, root)
+}
+
 fn create_directory_in_root(
     parent_path: PathBuf,
     name: &str,
@@ -520,7 +593,8 @@ pub fn run() {
             open_sidebar_location,
             preview_text_file,
             create_directory,
-            rename_entry
+            rename_entry,
+            copy_selected_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running FileVerse");

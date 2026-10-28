@@ -1,6 +1,6 @@
 use super::{
-    create_directory_in_root, map_io_error, path_to_text, read_directory, read_text_preview_file,
-    rename_entry_in_root, DIRECTORY_LIMIT, TEXT_PREVIEW_BYTE_LIMIT,
+    copy_file_into_root, create_directory_in_root, map_io_error, path_to_text, read_directory,
+    read_text_preview_file, rename_entry_in_root, DIRECTORY_LIMIT, TEXT_PREVIEW_BYTE_LIMIT,
 };
 use std::{
     fs, io,
@@ -395,4 +395,88 @@ fn rename_entry_rejects_symlinks() {
         Some("SYMLINK_NOT_ENTERABLE")
     );
     assert!(link.exists());
+}
+
+#[test]
+fn copy_file_creates_a_same_name_copy_and_returns_destination_snapshot() {
+    let fixture = Fixture::new("copy-success");
+    let source_directory = fixture.path().join("source");
+    let destination = fixture.path().join("destination");
+    fs::create_dir(&source_directory).unwrap();
+    fs::create_dir(&destination).unwrap();
+    let source = source_directory.join("sample.txt");
+    fs::write(&source, b"copy contents").unwrap();
+
+    let snapshot = copy_file_into_root(source, destination.clone(), fixture.path()).unwrap();
+
+    assert_eq!(
+        fs::read(destination.join("sample.txt")).unwrap(),
+        b"copy contents"
+    );
+    assert_eq!(snapshot.directory.path, destination.to_str().unwrap());
+    assert!(snapshot
+        .children
+        .iter()
+        .any(|child| child.name == "sample.txt"));
+}
+
+#[test]
+fn copy_file_rejects_collisions_without_overwriting() {
+    let fixture = Fixture::new("copy-collision");
+    let source_directory = fixture.path().join("source");
+    let destination = fixture.path().join("destination");
+    fs::create_dir(&source_directory).unwrap();
+    fs::create_dir(&destination).unwrap();
+    fs::write(source_directory.join("sample.txt"), b"source contents").unwrap();
+    fs::write(destination.join("sample.txt"), b"keep destination").unwrap();
+
+    let error = copy_file_into_root(
+        source_directory.join("sample.txt"),
+        destination.clone(),
+        fixture.path(),
+    )
+    .err()
+    .unwrap();
+
+    assert_eq!(error, "ALREADY_EXISTS");
+    assert_eq!(
+        fs::read(destination.join("sample.txt")).unwrap(),
+        b"keep destination"
+    );
+}
+
+#[test]
+fn copy_file_rejects_destinations_outside_selected_root() {
+    let root = Fixture::new("copy-root");
+    let outside = Fixture::new("copy-outside");
+    let source = root.path().join("sample.txt");
+    fs::write(&source, b"source contents").unwrap();
+
+    let error = copy_file_into_root(source, outside.path().to_path_buf(), root.path())
+        .err()
+        .unwrap();
+
+    assert_eq!(error, "OUTSIDE_SELECTED_ROOT");
+    assert!(!outside.path().join("sample.txt").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn copy_file_rejects_symlinks_without_copying_the_target() {
+    use std::os::unix::fs::symlink;
+
+    let fixture = Fixture::new("copy-symlink");
+    let destination = fixture.path().join("destination");
+    fs::create_dir(&destination).unwrap();
+    let target = fixture.path().join("target.txt");
+    let link = fixture.path().join("linked.txt");
+    fs::write(&target, b"target contents").unwrap();
+    symlink(&target, &link).unwrap();
+
+    let error = copy_file_into_root(link, destination.clone(), fixture.path())
+        .err()
+        .unwrap();
+
+    assert_eq!(error, "SYMLINK_NOT_ENTERABLE");
+    assert!(!destination.join("linked.txt").exists());
 }
