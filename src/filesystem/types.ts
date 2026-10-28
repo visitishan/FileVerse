@@ -37,4 +37,6 @@ export interface FilesystemPort {
   chooseRoot(): Promise<DirectorySnapshot | null>;
   listDirectory(path: string): Promise<DirectorySnapshot>;
   previewTextFile(path: string): Promise<TextPreview>;
+  createDirectory(parentPath: string, name: string): Promise<DirectorySnapshot>;
+  renameEntry(path: string, name: string): Promise<DirectorySnapshot>;
 }

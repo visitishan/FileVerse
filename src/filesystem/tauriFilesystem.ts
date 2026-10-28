@@ -22,4 +22,10 @@ export const tauriFilesystem: FilesystemPort = {
   previewTextFile(path: string) {
     return invoke<TextPreview>("preview_text_file", { path });
   },
+  createDirectory(parentPath: string, name: string) {
+    return invoke<DirectorySnapshot>("create_directory", { parentPath, name });
+  },
+  renameEntry(path: string, name: string) {
+    return invoke<DirectorySnapshot>("rename_entry", { path, name });
+  },
 };

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { sampleChildren, sampleSnapshot } from "./data/sampleFilesystem";
 import type { DirectorySnapshot, FileNode, SidebarLocation, TextPreview } from "./filesystem/types";
 import { isNativeRuntime, tauriFilesystem } from "./filesystem/tauriFilesystem";
@@ -21,6 +21,10 @@ const errorMessage = (cause: unknown) => {
   if (message.includes("LOCATION_UNAVAILABLE")) return "That location isn’t available on this device.";
   if (message.includes("PREVIEW_UNSUPPORTED")) return "This file type can’t be previewed yet.";
   if (message.includes("PREVIEW_NOT_UTF8")) return "This file is not valid UTF-8 text and can’t be previewed.";
+  if (message.includes("INVALID_NAME")) return "Choose a name without slashes.";
+  if (message.includes("ALREADY_EXISTS")) return "An item with that name already exists in this folder.";
+  if (message.includes("ROOT_CANNOT_RENAME")) return "Choose an item inside this folder to rename.";
+  if (message.includes("NOT_RENAMEABLE")) return "This item can’t be renamed in FileVerse.";
   if (message.includes("OUTSIDE_SELECTED_ROOT")) return "This file is outside the selected folder boundary.";
   if (message.includes("SYMLINK_NOT_ENTERABLE")) return "FileVerse won’t preview files reached through a symbolic link.";
   if (message.includes("NOT_FILE")) return "That item is not a regular file.";
@@ -32,6 +36,10 @@ export default function App() {
   const viewportHost = useRef<HTMLDivElement>(null);
   const viewport = useRef<ThreeViewport | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
+  const createFolderButton = useRef<HTMLButtonElement>(null);
+  const folderDialogWasOpen = useRef(false);
+  const renameButton = useRef<HTMLButtonElement>(null);
+  const renameDialogWasOpen = useRef(false);
   const [viewState, setViewState] = useState({ zoom: 1, depth: 0, maxDepth: 0 });
   const zoomLevel = viewState.zoom;
   const [nativeMode] = useState(isNativeRuntime);
@@ -59,6 +67,12 @@ export default function App() {
   const [truncated, setTruncated] = useState(false);
   const [preview, setPreview] = useState<(TextPreview & { name: string }) | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [createFolderBusy, setCreateFolderBusy] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameName, setRenameName] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState("name-asc");
   const requestId = useRef(0);
@@ -236,9 +250,17 @@ export default function App() {
 
   useEffect(() => {
     const onFind = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && preview) {
-        setPreview(null);
-        previewRequestId.current += 1;
+      if (event.key === "Escape") {
+        if (renameOpen) {
+          setRenameOpen(false);
+          setRenameName("");
+        } else if (createFolderOpen) {
+          setCreateFolderOpen(false);
+          setNewFolderName("");
+        } else if (preview) {
+          setPreview(null);
+          previewRequestId.current += 1;
+        }
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
         event.preventDefault();
@@ -248,7 +270,25 @@ export default function App() {
     };
     window.addEventListener("keydown", onFind);
     return () => window.removeEventListener("keydown", onFind);
-  }, [preview]);
+  }, [createFolderOpen, preview, renameOpen]);
+
+  useEffect(() => {
+    if (createFolderOpen) {
+      folderDialogWasOpen.current = true;
+    } else if (!createFolderBusy && folderDialogWasOpen.current) {
+      folderDialogWasOpen.current = false;
+      createFolderButton.current?.focus();
+    }
+  }, [createFolderBusy, createFolderOpen]);
+
+  useEffect(() => {
+    if (renameOpen) {
+      renameDialogWasOpen.current = true;
+    } else if (!renameBusy && renameDialogWasOpen.current) {
+      renameDialogWasOpen.current = false;
+      renameButton.current?.focus();
+    }
+  }, [renameBusy, renameOpen]);
 
   useEffect(() => {
     if (!nativeMode) return;
@@ -296,6 +336,45 @@ export default function App() {
       if (request === previewRequestId.current) setError(errorMessage(cause));
     } finally {
       if (request === previewRequestId.current) setPreviewBusy(false);
+    }
+  };
+
+  const createFolder = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!nativeMode || !newFolderName.trim() || createFolderBusy) return;
+    setCreateFolderBusy(true);
+    setError(null);
+    try {
+      const snapshot = await tauriFilesystem.createDirectory(current.path, newFolderName);
+      setEntries(snapshot.children);
+      setTruncated(snapshot.truncated);
+      const created = snapshot.children.find((node) => node.name === newFolderName);
+      if (created) setSelected(created);
+      setCreateFolderOpen(false);
+      setNewFolderName("");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setCreateFolderBusy(false);
+    }
+  };
+
+  const renameSelected = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!nativeMode || !renameName.trim() || renameBusy) return;
+    setRenameBusy(true);
+    setError(null);
+    try {
+      const snapshot = await tauriFilesystem.renameEntry(selected.path, renameName);
+      setEntries(snapshot.children);
+      setTruncated(snapshot.truncated);
+      setSelected(snapshot.children.find((node) => node.name === renameName) ?? snapshot.directory);
+      setRenameOpen(false);
+      setRenameName("");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setRenameBusy(false);
     }
   };
 
@@ -418,7 +497,8 @@ export default function App() {
               <div className="dock-actions">
                 <button className="dock-action open-action" onClick={openSelected} disabled={selected.kind !== "directory" || selected.id === current.id} title={selected.id === current.id ? "This folder is already open" : selected.kind !== "directory" ? "Select a folder to open it" : "Open selected folder"}><span>▱</span><small>{selected.id === current.id ? "Current" : "Open"}</small></button>
                 <button className="dock-action" onClick={() => void showPreview()} disabled={!canPreview || previewBusy} title={canPreview ? "Preview this text file (up to 64 KB)" : "Select a supported text file to preview"}><span>◉</span><small>{previewBusy ? "Loading…" : "Preview"}</small></button>
-                <button className="dock-action" disabled title="New Folder is planned for a later milestone"><span>▱<sup>+</sup></span><small>New Folder</small></button>
+                <button ref={createFolderButton} className="dock-action" onClick={() => { setError(null); setCreateFolderOpen(true); }} disabled={!nativeMode || !hasSelectedRoot || busy || createFolderBusy} title="Create a folder in the current directory"><span>▱<sup>+</sup></span><small>New Folder</small></button>
+                <button ref={renameButton} className="dock-action" onClick={() => { setError(null); setRenameName(selected.name); setRenameOpen(true); }} disabled={!nativeMode || !hasSelectedRoot || selected.id === current.id || selected.isSymlink || selected.kind === "other" || busy || renameBusy} title={selected.id === current.id ? "Select an item inside this folder to rename" : "Rename selected item"}><span>✎</span><small>Rename</small></button>
                 <button className="dock-action" disabled title="Sharing is planned for a later milestone"><span>↥</span><small>Share</small></button>
                 <button className="dock-action" disabled title="Get Info is planned for a later milestone"><span>ⓘ</span><small>Get Info</small></button>
                 <button className="dock-more" disabled aria-label="More actions">•••</button>
@@ -429,6 +509,52 @@ export default function App() {
               <pre>{preview.text}</pre>
               {preview.truncated && <footer>Preview limited to the first 64 KB.</footer>}
             </section>}
+            {createFolderOpen && <div className="folder-dialog-backdrop">
+              <form className="folder-dialog" role="dialog" aria-modal="true" aria-labelledby="create-folder-title" onSubmit={(event) => void createFolder(event)} onKeyDown={(event) => {
+                if (event.key !== "Tab") return;
+                const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("input:not(:disabled), button:not(:disabled)"));
+                const first = controls[0];
+                const last = controls[controls.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                  event.preventDefault();
+                  last?.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                  event.preventDefault();
+                  first?.focus();
+                }
+              }}>
+                <h2 id="create-folder-title">Create folder</h2>
+                <label htmlFor="new-folder-name">Folder name</label>
+                <input id="new-folder-name" autoFocus maxLength={255} value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} placeholder="Enter a name" />
+                <div className="folder-dialog-actions">
+                  <button type="button" onClick={() => { setCreateFolderOpen(false); setNewFolderName(""); }} disabled={createFolderBusy}>Cancel</button>
+                  <button type="submit" disabled={!newFolderName.trim() || createFolderBusy}>{createFolderBusy ? "Creating…" : "Create"}</button>
+                </div>
+              </form>
+            </div>}
+            {renameOpen && <div className="folder-dialog-backdrop">
+              <form className="folder-dialog" role="dialog" aria-modal="true" aria-labelledby="rename-item-title" onSubmit={(event) => void renameSelected(event)} onKeyDown={(event) => {
+                if (event.key !== "Tab") return;
+                const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("input:not(:disabled), button:not(:disabled)"));
+                const first = controls[0];
+                const last = controls[controls.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                  event.preventDefault();
+                  last?.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                  event.preventDefault();
+                  first?.focus();
+                }
+              }}>
+                <h2 id="rename-item-title">Rename item</h2>
+                <label htmlFor="rename-item-name">New name</label>
+                <input id="rename-item-name" autoFocus maxLength={255} value={renameName} onChange={(event) => setRenameName(event.target.value)} placeholder="Enter a name" />
+                <div className="folder-dialog-actions">
+                  <button type="button" onClick={() => { setRenameOpen(false); setRenameName(""); }} disabled={renameBusy}>Cancel</button>
+                  <button type="submit" disabled={!renameName.trim() || renameName === selected.name || renameBusy}>{renameBusy ? "Renaming…" : "Rename"}</button>
+                </div>
+              </form>
+            </div>}
           </div>
         </section>
       </div>

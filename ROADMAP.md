@@ -23,8 +23,8 @@
 |---|---|---|
 | 0. Project foundation | Product, architecture, and agent guidance are documented | Complete: specification, architecture, contributor rules, roadmap, and native smoke checklist are present |
 | 1. MVP-0 spatial prototype | See a folder's actual contents in depth, navigate into folders/back, zoom, orbit, and travel through loaded depth rows | Complete on macOS: native fixture checks and user-confirmed horizontal/diagonal trackpad gestures passed; Windows/Linux remain deferred to Stage 4 |
-| 2. File manager basics | Make browsing useful for everyday discovery | In progress: search and sorting are native-checked; bounded plain-text preview displays in the native app; edge-case checks remain |
-| 3. File operations | Safely perform common local file actions | After browsing behavior stabilizes |
+| 2. File manager basics | Make browsing useful for everyday discovery | Complete on macOS: search, sorting, bounded preview, keyboard list access, and preview safety checks are recorded; Windows/Linux remain deferred to Stage 4 |
+| 3. File operations | Safely perform common local file actions | In progress: create-folder and rename slices are implemented and native-verified on macOS |
 | 4. Platform completion | Verify and adapt behavior for macOS, Windows, and Linux | Incremental, with dedicated hardening stage |
 | 5. Additional storage | Explore network and cloud locations through adapters | Only after local filesystem experience is solid |
 | 6. Advanced intelligence | Add smart organization and search where evidence supports it | Long-term exploration |
@@ -45,9 +45,11 @@ This is the repository's working checklist for contributor handoff. Update a row
 | Zoom, orbit, and loaded-depth controls | Implemented; horizontal scroll orbits around the loaded-stack center, vertical scroll travels through depth, and mouse drag controls yaw/pitch | User-confirmed: horizontal and diagonal trackpad gestures work; vertical scroll and mouse drag leave the active folder unchanged |
 | macOS native behavior | Complete for Stage 1 | Native fixture checks and user-confirmed physical trackpad gestures are recorded in [`docs/MVP0_NATIVE_SMOKE_CHECKLIST.md`](docs/MVP0_NATIVE_SMOKE_CHECKLIST.md) |
 | Windows and Linux behavior | Deferred to Stage 4 | No Windows/Linux machine is currently available; do not claim platform support until checked |
-| Stage 2 features | In progress | Search/sorting are native-checked; previewing README.md works in the native app. Verify truncation and unsupported/binary rejection. Keep file operations, cloud storage, and watchers deferred |
+| Stage 2 features | Complete on macOS | Search/sorting and bounded text preview are native-checked; keyboard list is reachable through Tab; preview truncation, unsupported types, binary rejection, symlink handling, and root boundary are recorded in [`docs/STAGE2_NATIVE_CHECKLIST.md`](docs/STAGE2_NATIVE_CHECKLIST.md) |
+| Stage 3 first operation: create folder | Implemented and native-verified | Disposable fixture verified successful creation and refreshed listing; cancel made no changes; invalid separators and duplicate names showed clear errors. See [`docs/STAGE3_NATIVE_CHECKLIST.md`](docs/STAGE3_NATIVE_CHECKLIST.md) |
+| Stage 3 second operation: rename | Implemented and native-verified | Disposable fixture verified file/folder rename, cancel, invalid-name rejection, and collision handling; backend also rejects root, symlink, and out-of-root paths |
 
-**Where to continue:** finish the bounded plain-text preview checks in [`docs/STAGE2_NATIVE_CHECKLIST.md`](docs/STAGE2_NATIVE_CHECKLIST.md): verify 64 KiB truncation and unsupported/binary rejection. A real UTF-8 Markdown file preview was confirmed in the native app. Current-folder filename search was native-checked for shortcut focus, positive match, and no-match behavior; sorting was native-checked for recently modified, largest first, and name order. Stage 1's macOS checks are complete based on native fixture verification and the user's physical horizontal/diagonal trackpad confirmation. Windows/Linux checks stay deferred to Stage 4.
+**Where to continue:** plan a bounded Copy slice for a selected regular file, with destination selection inside the selected root, collision rejection, and post-copy refresh. Decide recursive folder-copy behavior before exposing folder copy. Keep cloud storage, watchers, and Windows/Linux validation deferred to their later stages.
 
 ---
 
@@ -150,6 +152,7 @@ Add common operations only after users trust the navigation and selection model.
 
 ### Candidate scope
 
+- Create a new child folder in the current directory with name validation and collision handling.
 - Rename, copy, move, and delete with clear confirmation and error handling.
 - Undo/recovery strategy where the OS supports it; define behavior before exposing destructive actions.
 - Conflict handling for existing destinations and files changing during an operation.
@@ -218,9 +221,9 @@ These are experiments, not commitments. Each requires a clear user problem, priv
 
 ## Immediate next actions
 
-1. Complete the preview edge-case checks in [`docs/STAGE2_NATIVE_CHECKLIST.md`](docs/STAGE2_NATIVE_CHECKLIST.md).
+1. Define and implement safe file copy for one selected regular file; keep recursive folder copy out until its limits and error behavior are specified.
 2. Keep search and sorting scoped to already-loaded direct children; do not add recursive traversal or backend filesystem search.
-3. Windows/Linux validation remains deferred to Stage 4; retain the MVP-0 native checklist as evidence for macOS behavior.
+3. Windows/Linux validation remains deferred to Stage 4; retain the MVP-0 and Stage 2 native checklists as evidence for macOS behavior.
 
 ## Change policy
 

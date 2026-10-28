@@ -18,7 +18,7 @@ These screenshots show the current native Tauri app. The browser preview uses sa
 
 ## Project status
 
-**Current milestone: Stage 2 file manager basics — in progress.** MVP-0 spatial browsing and the prepared macOS folder fixtures have been checked in the native app, including horizontal and diagonal trackpad input (user-confirmed). Current-folder filename search and sorting are implemented and native-checked. Windows and Linux validation is intentionally deferred to the platform-completion milestone.
+**Current milestone: Stage 3 safe local file operations — in progress.** MVP-0 spatial browsing and Stage 2 search, sorting, and bounded text preview have been checked in the macOS native app. Create Folder and Rename have passed native checks against disposable fixtures. Windows and Linux validation is intentionally deferred to the platform-completion milestone.
 
 | Area | Status |
 |---|---|
@@ -30,7 +30,9 @@ These screenshots show the current native Tauri app. The browser preview uses sa
 | Selected-root boundary; horizontal/diagonal gesture checks | Verified; horizontal/diagonal gestures were user-confirmed in the [MVP-0 smoke checklist](./docs/MVP0_NATIVE_SMOKE_CHECKLIST.md) |
 | Current-folder filename search | Implemented and native-checked for shortcut focus, matching results, and no-match state |
 | Current-folder sorting | Implemented and native-checked for name, modified time, and size ordering |
-| Bounded plain-text preview | README.md preview verified in the native app; 64 KiB truncation and rejection checks remain |
+| Bounded plain-text preview | Native-checked for the 64 KiB limit, unsupported types, invalid UTF-8, symlink rejection, and selected-root boundaries; details in the [Stage 2 checklist](./docs/STAGE2_NATIVE_CHECKLIST.md) |
+| Create a folder | Implemented and native-verified with a disposable fixture |
+| Rename a file or folder | Implemented and native-verified with a disposable fixture |
 | Windows and Linux support validation | Deferred to the platform-completion milestone |
 
 The [roadmap](./ROADMAP.md) is the source of truth for milestone progress and next steps. Keep it current as work is verified so a new contributor can see what is complete and where to continue.
@@ -42,7 +44,7 @@ The [roadmap](./ROADMAP.md) is the source of truth for milestone progress and ne
 - Horizontal two-finger scrolling rotates the loaded stack around its center; vertical scrolling moves through its depth layers. Drag with the primary mouse button to control yaw and pitch. Yaw can complete full revolutions; pitch is bounded so the view does not flip.
 - Use the on-screen depth controls to move through the already-loaded scene rows; Reset restores the default view.
 
-MVP-0 is focused on proving spatial browsing. Stage 2 adds filename search and sorting for the currently open folder, plus a bounded preview for selected plain-text files. File operations, cloud storage, filesystem watchers, recursive indexing, and other production file-manager features remain deferred.
+MVP-0 is focused on proving spatial browsing. Stage 2 adds filename search and sorting for the currently open folder, plus a bounded preview for selected plain-text files. Stage 3 is adding local operations one at a time, beginning with verified folder creation and rename. Safe file copy is the next operation to plan; move, delete, cloud storage, filesystem watchers, and recursive indexing remain deferred.
 
 ## Run locally
 
@@ -72,4 +74,6 @@ npm run tauri dev
 - [Architecture](./ARCHITECTURE.md)
 - [Roadmap and progress tracker](./ROADMAP.md)
 - [MVP-0 native smoke checklist](./docs/MVP0_NATIVE_SMOKE_CHECKLIST.md)
+- [Stage 2 native checklist](./docs/STAGE2_NATIVE_CHECKLIST.md)
+- [Stage 3 native checklist](./docs/STAGE3_NATIVE_CHECKLIST.md)
 - [AI-agent contribution rules](./AGENTS.md)

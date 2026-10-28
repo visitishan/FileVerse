@@ -244,7 +244,112 @@ fn preview_text_file(
     let root = root_guard
         .as_ref()
         .ok_or_else(|| "ROOT_NOT_SELECTED".to_string())?;
-    let file_path = resolve_scoped_path(PathBuf::from(path), root)?;
+    read_text_preview_file(PathBuf::from(path), root)
+}
+
+#[tauri::command]
+fn create_directory(
+    parent_path: String,
+    name: String,
+    state: tauri::State<'_, FilesystemState>,
+) -> Result<DirectorySnapshotDto, String> {
+    let root_guard = state
+        .selected_root
+        .lock()
+        .map_err(|_| "FILESYSTEM_ERROR".to_string())?;
+    let root = root_guard
+        .as_ref()
+        .ok_or_else(|| "ROOT_NOT_SELECTED".to_string())?;
+    create_directory_in_root(PathBuf::from(parent_path), &name, root)
+}
+
+#[tauri::command]
+fn rename_entry(
+    path: String,
+    name: String,
+    state: tauri::State<'_, FilesystemState>,
+) -> Result<DirectorySnapshotDto, String> {
+    let root_guard = state
+        .selected_root
+        .lock()
+        .map_err(|_| "FILESYSTEM_ERROR".to_string())?;
+    let root = root_guard
+        .as_ref()
+        .ok_or_else(|| "ROOT_NOT_SELECTED".to_string())?;
+    rename_entry_in_root(PathBuf::from(path), &name, root)
+}
+
+fn create_directory_in_root(
+    parent_path: PathBuf,
+    name: &str,
+    root: &Path,
+) -> Result<DirectorySnapshotDto, String> {
+    if name.trim().is_empty()
+        || name == "."
+        || name == ".."
+        || name
+            .chars()
+            .any(|character| matches!(character, '/' | '\\' | '\0'))
+    {
+        return Err("INVALID_NAME".into());
+    }
+    let parent_path = resolve_scoped_path(parent_path, root)?;
+    if !fs::symlink_metadata(&parent_path)
+        .map_err(|error| map_io_error(&error))?
+        .is_dir()
+    {
+        return Err("NOT_DIRECTORY".into());
+    }
+    let new_path = parent_path.join(name);
+    fs::create_dir(&new_path).map_err(|error| match error.kind() {
+        std::io::ErrorKind::AlreadyExists => "ALREADY_EXISTS".to_string(),
+        _ => map_io_error(&error),
+    })?;
+    read_directory(parent_path.clone(), root)
+}
+
+fn rename_entry_in_root(
+    path: PathBuf,
+    name: &str,
+    root: &Path,
+) -> Result<DirectorySnapshotDto, String> {
+    if name.trim().is_empty()
+        || name == "."
+        || name == ".."
+        || name
+            .chars()
+            .any(|character| matches!(character, '/' | '\\' | '\0'))
+    {
+        return Err("INVALID_NAME".into());
+    }
+    let path = resolve_scoped_path(path, root)?;
+    if path == root {
+        return Err("ROOT_CANNOT_RENAME".into());
+    }
+    let parent_path = path.parent().ok_or_else(|| "INVALID_PATH".to_string())?;
+    let parent_path = resolve_scoped_path(parent_path.to_path_buf(), root)?;
+    let metadata = fs::symlink_metadata(&path).map_err(|error| map_io_error(&error))?;
+    if !metadata.is_file() && !metadata.is_dir() {
+        return Err("NOT_RENAMEABLE".into());
+    }
+    let new_path = parent_path.join(name);
+    if new_path == path {
+        return read_directory(parent_path, root);
+    }
+    match fs::symlink_metadata(&new_path) {
+        Ok(_) => return Err("ALREADY_EXISTS".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(map_io_error(&error)),
+    }
+    fs::rename(&path, &new_path).map_err(|error| match error.kind() {
+        std::io::ErrorKind::AlreadyExists => "ALREADY_EXISTS".to_string(),
+        _ => map_io_error(&error),
+    })?;
+    read_directory(parent_path, root)
+}
+
+fn read_text_preview_file(path: PathBuf, root: &Path) -> Result<TextPreviewDto, String> {
+    let file_path = resolve_scoped_path(path, root)?;
     let extension = file_path
         .extension()
         .and_then(|part| part.to_str())
@@ -413,7 +518,9 @@ pub fn run() {
             open_default_directory,
             list_sidebar_locations,
             open_sidebar_location,
-            preview_text_file
+            preview_text_file,
+            create_directory,
+            rename_entry
         ])
         .run(tauri::generate_context!())
         .expect("error while running FileVerse");

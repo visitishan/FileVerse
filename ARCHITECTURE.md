@@ -148,6 +148,8 @@ interface FilesystemPort {
   chooseRoot(): Promise<DirectorySnapshot | null>;
   listDirectory(path: string, options?: { limit?: number; cursor?: string }): Promise<DirectorySnapshot>;
   previewTextFile(path: string): Promise<{ text: string; truncated: boolean }>;
+  createDirectory(parentPath: string, name: string): Promise<DirectorySnapshot>;
+  renameEntry(path: string, name: string): Promise<DirectorySnapshot>;
 }
 ```
 
@@ -160,6 +162,8 @@ Use serializable DTOs and stable error codes; map backend errors into user-facin
 - `choose_root` opens the native folder picker only when the user asks to switch roots, canonicalizes and lists the selected directory, and only then makes it the session root. A failed listing leaves the prior root intact.
 - `list_directory({ path })` returns that directory and its direct children only. The backend rejects paths outside the selected root and paths that traverse symlinks, sorts directories first, and caps results at 300 with `truncated: true`.
 - Stage 2 `preview_text_file({ path })` is a deliberately narrow read capability. It accepts only a regular file inside the selected root, rejects symlink traversal, allows a small explicit text-extension set, reads at most 64 KiB, and returns UTF-8 text plus a truncation flag. It does not accept arbitrary read lengths, decode other formats, or expose a generic file-read command.
+- Stage 3 `create_directory({ parentPath, name })` creates one child directory only. It resolves the parent inside the selected root, rejects symlink traversal, invalid path-like names, and collisions, then returns a fresh snapshot. Do not expose arbitrary write paths or recursive creation through this command.
+- Stage 3 `rename_entry({ path, name })` renames one selected file or directory in its existing parent. It rejects root renames, symlink traversal, invalid names, and existing destinations, then returns a fresh parent snapshot. Keep the operation scoped to the selected root; do not turn it into a move command.
 - The current Rust DTO is intentionally the MVP subset of the conceptual model above: it includes `id`, opaque `path`, `parentId`, `name`, `kind`, `extension`, `sizeBytes`, `modifiedAt`, `hidden`, and `isSymlink`. It does not yet return capabilities, symlink targets, or a paging token.
 - Errors currently cross IPC as stable string codes (`NOT_FOUND`, `PERMISSION_DENIED`, `NOT_DIRECTORY`, `UNSUPPORTED_PATH_ENCODING`, `ROOT_NOT_SELECTED`, `OUTSIDE_SELECTED_ROOT`, `FILESYSTEM_ERROR`) and are mapped to short UI messages. Replace with a structured envelope if additional recovery actions are introduced.
 - Browser preview uses fixture data because it has no native filesystem capability. The desktop runtime loads Home directly on launch and keeps the folder picker as an explicit root-switch action; the UI does not import filesystem APIs directly.
