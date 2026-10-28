@@ -2,6 +2,15 @@
 
 **FileVerse is an experimental 3D desktop file browser that represents filesystem hierarchy as spatial depth.** It combines familiar folder navigation with a scene where files and folders appear as navigable cards.
 
+## Download FileVerse
+
+The current **v0.1.0 pre-release** is available for **macOS on Apple Silicon (arm64)**:
+
+- [Download the macOS DMG](https://github.com/visitishan/FileVerse/releases/download/v0.1.0/FileVerse_0.1.0_aarch64.dmg)
+- [View the release and its notes](https://github.com/visitishan/FileVerse/releases/tag/v0.1.0)
+
+This is an experimental build and is not notarized by Apple, so macOS may show a warning when you first open it. Windows and Linux builds are not available yet.
+
 ### Spatial browsing
 
 ![FileVerse spatial folder browser](./screenshots/spatial-browser.jpg)
@@ -26,7 +35,7 @@ These screenshots show the current native Tauri app. The browser preview uses sa
 | Rust-backed local directory access and common sidebar locations | Implemented; startup, sidebar navigation, picker selection/cancel, and folder navigation reported working |
 | Spatial cards, folder navigation, Back, and breadcrumbs | Implemented; manually verified |
 | Zoom, centered orbit, and depth controls | Implemented; vertical scroll was checked in the native app moving through loaded layers, while horizontal scroll and drag orbit around the loaded stack center |
-| macOS empty, special-name, large-folder, permission, symlink, and mouse-drag checks | Verified in the Tauri desktop app; 9 Rust filesystem tests pass |
+| macOS empty, special-name, large-folder, permission, symlink, and mouse-drag checks | Verified in the Tauri desktop app; 24 Rust tests pass |
 | Selected-root boundary; horizontal/diagonal gesture checks | Verified; horizontal/diagonal gestures were user-confirmed in the [MVP-0 smoke checklist](./docs/MVP0_NATIVE_SMOKE_CHECKLIST.md) |
 | Current-folder filename search | Implemented and native-checked for shortcut focus, matching results, and no-match state |
 | Current-folder sorting | Implemented and native-checked for name, modified time, and size ordering |
