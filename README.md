@@ -29,7 +29,7 @@ These screenshots show the current native Tauri app. The browser preview uses sa
 
 **Current milestone: Stage 3 safe local file operations — in progress.** MVP-0 spatial browsing and Stage 2 search, sorting, and bounded text preview have been checked in the macOS native app. Create Folder, Rename, single-file Copy and Move, and Move to Trash for one file or folder have passed macOS native checks against disposable fixtures. Rust fixtures also inject a cross-device Move error and verify it leaves the source intact with no destination file. Windows and Linux validation is deferred to the platform-completion milestone.
 
-The [GitHub Actions workflow](./.github/workflows/ci.yml) is configured to build the frontend and run the Rust filesystem tests on macOS, Windows, and Linux. These checks catch build and test incompatibilities; they do not replace native UI testing on each platform.
+The [GitHub Actions workflow](./.github/workflows/ci.yml) passed its macOS, Windows, and Ubuntu frontend-build and Rust-test matrix on 2026-10-31. These checks catch build and test incompatibilities; they do not replace native UI testing on each platform.
 
 | Area | Status |
 |---|---|
