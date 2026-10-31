@@ -28,6 +28,11 @@ const errorMessage = (cause: unknown) => {
   if (message.includes("OUTSIDE_SELECTED_ROOT")) return "This file is outside the selected folder boundary.";
   if (message.includes("SYMLINK_NOT_ENTERABLE")) return "FileVerse won’t follow symbolic links for this action.";
   if (message.includes("NOT_FILE")) return "That item is not a regular file.";
+  if (message.includes("MOVE_UNSUPPORTED")) return "This file can’t be moved to that location. Choose a folder on the same storage volume.";
+  if (message.includes("ROOT_CANNOT_TRASH")) return "The selected root folder can’t be moved to Trash from FileVerse.";
+  if (message.includes("NOT_TRASHABLE")) return "This item can’t be moved to Trash from FileVerse.";
+  if (message.includes("TRASH_UNAVAILABLE")) return "Move to Trash is not available on this platform yet.";
+  if (message.includes("TRASH_FAILED")) return "The system couldn’t move this item to Trash. Check its permissions and try again.";
   if (message.includes("FILESYSTEM_ERROR")) return "FileVerse couldn’t complete this filesystem action.";
   return "This action could not be completed. Please try again.";
 };
@@ -74,6 +79,9 @@ export default function App() {
   const [renameName, setRenameName] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
   const [copyBusy, setCopyBusy] = useState(false);
+  const [moveBusy, setMoveBusy] = useState(false);
+  const [trashConfirmOpen, setTrashConfirmOpen] = useState(false);
+  const [trashBusy, setTrashBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState("name-asc");
@@ -402,6 +410,53 @@ export default function App() {
     }
   };
 
+  const moveSelectedFile = async () => {
+    if (!nativeMode || selected.kind !== "file" || selected.isSymlink || moveBusy) return;
+    const source = selected;
+    setMoveBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await tauriFilesystem.moveSelectedFile(source.path);
+      if (!result) return;
+      if (result.destination.directory.path === current.path) {
+        setEntries(result.destination.children);
+        setTruncated(result.destination.truncated);
+        setSelected(result.destination.children.find((node) => node.name === source.name) ?? result.destination.directory);
+      } else if (result.sourceParent.directory.path === current.path) {
+        setEntries(result.sourceParent.children);
+        setTruncated(result.sourceParent.truncated);
+        setSelected(result.sourceParent.directory);
+      }
+      setNotice(`Moved “${source.name}” to ${result.destination.directory.name}.`);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setMoveBusy(false);
+    }
+  };
+
+  const trashSelected = async () => {
+    if (!nativeMode || !hasSelectedRoot || selected.id === current.id || selected.isSymlink || selected.kind === "other" || trashBusy) return;
+    const source = selected;
+    setTrashBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const snapshot = await tauriFilesystem.trashEntry(source.path);
+      setEntries(snapshot.children);
+      setTruncated(snapshot.truncated);
+      setSelected(snapshot.directory);
+      setTrashConfirmOpen(false);
+      setNotice(`Moved “${source.name}” to Trash. You can restore it from your system Trash.`);
+    } catch (cause) {
+      setTrashConfirmOpen(false);
+      setError(errorMessage(cause));
+    } finally {
+      setTrashBusy(false);
+    }
+  };
+
   return (
     <main className="app-window">
       <header className="topbar">
@@ -522,9 +577,10 @@ export default function App() {
                 <button className="dock-action open-action" onClick={openSelected} disabled={selected.kind !== "directory" || selected.id === current.id} title={selected.id === current.id ? "This folder is already open" : selected.kind !== "directory" ? "Select a folder to open it" : "Open selected folder"}><span>▱</span><small>{selected.id === current.id ? "Current" : "Open"}</small></button>
                 <button className="dock-action" onClick={() => void showPreview()} disabled={!canPreview || previewBusy} title={canPreview ? "Preview this text file (up to 64 KB)" : "Select a supported text file to preview"}><span>◉</span><small>{previewBusy ? "Loading…" : "Preview"}</small></button>
                 <button className="dock-action" onClick={() => void copySelectedFile()} disabled={!nativeMode || selected.kind !== "file" || selected.isSymlink || busy || copyBusy} title={selected.kind === "file" && !selected.isSymlink ? "Copy this file to a folder inside the selected root" : "Select a regular file to copy"}><span>▧</span><small>{copyBusy ? "Copying…" : "Copy"}</small></button>
+                <button className="dock-action" onClick={() => void moveSelectedFile()} disabled={!nativeMode || selected.kind !== "file" || selected.isSymlink || busy || moveBusy} title={selected.kind === "file" && !selected.isSymlink ? "Move this file to a folder inside the selected root" : "Select a regular file to move"}><span>↗</span><small>{moveBusy ? "Moving…" : "Move"}</small></button>
                 <button ref={createFolderButton} className="dock-action" onClick={() => { setError(null); setCreateFolderOpen(true); }} disabled={!nativeMode || !hasSelectedRoot || busy || createFolderBusy} title="Create a folder in the current directory"><span>▱<sup>+</sup></span><small>New Folder</small></button>
                 <button ref={renameButton} className="dock-action" onClick={() => { setError(null); setRenameName(selected.name); setRenameOpen(true); }} disabled={!nativeMode || !hasSelectedRoot || selected.id === current.id || selected.isSymlink || selected.kind === "other" || busy || renameBusy} title={selected.id === current.id ? "Select an item inside this folder to rename" : "Rename selected item"}><span>✎</span><small>Rename</small></button>
-                <button className="dock-action" disabled title="Sharing is planned for a later milestone"><span>↥</span><small>Share</small></button>
+                <button className="dock-action" onClick={() => { setError(null); setTrashConfirmOpen(true); }} disabled={!nativeMode || !hasSelectedRoot || selected.id === current.id || selected.isSymlink || selected.kind === "other" || busy || trashBusy} title={selected.id === current.id ? "The selected root can’t be moved to Trash" : "Move selected item to system Trash"}><span>⌫</span><small>{trashBusy ? "Moving…" : "Move to Trash"}</small></button>
                 <button className="dock-action" disabled title="Get Info is planned for a later milestone"><span>ⓘ</span><small>Get Info</small></button>
                 <button className="dock-more" disabled aria-label="More actions">•••</button>
               </div>
@@ -579,6 +635,16 @@ export default function App() {
                   <button type="submit" disabled={!renameName.trim() || renameName === selected.name || renameBusy}>{renameBusy ? "Renaming…" : "Rename"}</button>
                 </div>
               </form>
+            </div>}
+            {trashConfirmOpen && <div className="folder-dialog-backdrop">
+              <section className="folder-dialog" role="alertdialog" aria-modal="true" aria-labelledby="trash-item-title" aria-describedby="trash-item-description">
+                <h2 id="trash-item-title">Move to Trash?</h2>
+                <p id="trash-item-description">{selected.kind === "directory" ? `“${selected.name}” and everything inside it will move to your system Trash.` : `“${selected.name}” will move to your system Trash.`} You can restore it from Trash later.</p>
+                <div className="folder-dialog-actions">
+                  <button type="button" autoFocus onClick={() => setTrashConfirmOpen(false)} disabled={trashBusy}>Cancel</button>
+                  <button type="button" className="destructive-action" onClick={() => void trashSelected()} disabled={trashBusy}>{trashBusy ? "Moving…" : "Move to Trash"}</button>
+                </div>
+              </section>
             </div>}
           </div>
         </section>

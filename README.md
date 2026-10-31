@@ -27,7 +27,9 @@ These screenshots show the current native Tauri app. The browser preview uses sa
 
 ## Project status
 
-**Current milestone: Stage 3 safe local file operations — in progress.** MVP-0 spatial browsing and Stage 2 search, sorting, and bounded text preview have been checked in the macOS native app. Create Folder, Rename, and single-file Copy have passed native checks against disposable fixtures. Windows and Linux validation is intentionally deferred to the platform-completion milestone.
+**Current milestone: Stage 3 safe local file operations — in progress.** MVP-0 spatial browsing and Stage 2 search, sorting, and bounded text preview have been checked in the macOS native app. Create Folder, Rename, single-file Copy and Move, and Move to Trash for one file or folder have passed macOS native checks against disposable fixtures. Rust fixtures also inject a cross-device Move error and verify it leaves the source intact with no destination file. Windows and Linux validation is deferred to the platform-completion milestone.
+
+The [GitHub Actions workflow](./.github/workflows/ci.yml) is configured to build the frontend and run the Rust filesystem tests on macOS, Windows, and Linux. These checks catch build and test incompatibilities; they do not replace native UI testing on each platform.
 
 | Area | Status |
 |---|---|
@@ -35,7 +37,7 @@ These screenshots show the current native Tauri app. The browser preview uses sa
 | Rust-backed local directory access and common sidebar locations | Implemented; startup, sidebar navigation, picker selection/cancel, and folder navigation reported working |
 | Spatial cards, folder navigation, Back, and breadcrumbs | Implemented; manually verified |
 | Zoom, centered orbit, and depth controls | Implemented; vertical scroll was checked in the native app moving through loaded layers, while horizontal scroll and drag orbit around the loaded stack center |
-| macOS empty, special-name, large-folder, permission, symlink, and mouse-drag checks | Verified in the Tauri desktop app; 28 Rust tests pass |
+| macOS empty, special-name, large-folder, permission, symlink, and mouse-drag checks | Verified in the Tauri desktop app; 33 Rust tests pass |
 | Selected-root boundary; horizontal/diagonal gesture checks | Verified; horizontal/diagonal gestures were user-confirmed in the [MVP-0 smoke checklist](./docs/MVP0_NATIVE_SMOKE_CHECKLIST.md) |
 | Current-folder filename search | Implemented and native-checked for shortcut focus, matching results, and no-match state |
 | Current-folder sorting | Implemented and native-checked for name, modified time, and size ordering |
@@ -43,6 +45,8 @@ These screenshots show the current native Tauri app. The browser preview uses sa
 | Create a folder | Implemented and native-verified with a disposable fixture |
 | Rename a file or folder | Implemented and native-verified with a disposable fixture |
 | Copy a regular file | Implemented and native-verified on macOS; copies into a chosen folder within the selected root. Folder copy is not included |
+| Move a regular file | Native-verified on macOS for same-volume destinations inside the selected root. Injected Rust fixture verifies cross-device failure preserves the source; actual second-volume behavior remains unverified. Folder moves are not supported |
+| Move to system Trash | Implemented and native-verified on macOS for one file and folder, including confirmation, source refresh, selected-root/symlink restrictions, and Rust fixture checks for outside-root/missing-item rejection and injected failure with source preservation. Permanent deletion and in-app restore are not included |
 | Windows and Linux support validation | Deferred to the platform-completion milestone |
 
 The [roadmap](./ROADMAP.md) is the source of truth for milestone progress and next steps. Keep it current as work is verified so a new contributor can see what is complete and where to continue.
@@ -54,7 +58,7 @@ The [roadmap](./ROADMAP.md) is the source of truth for milestone progress and ne
 - Horizontal two-finger scrolling rotates the loaded stack around its center; vertical scrolling moves through its depth layers. Drag with the primary mouse button to control yaw and pitch. Yaw can complete full revolutions; pitch is bounded so the view does not flip.
 - Use the on-screen depth controls to move through the already-loaded scene rows; Reset restores the default view.
 
-MVP-0 is focused on proving spatial browsing. Stage 2 adds filename search and sorting for the currently open folder, plus a bounded preview for selected plain-text files. Stage 3 has verified folder creation, rename, and single-file copy on macOS. Move, delete, cloud storage, filesystem watchers, and recursive indexing remain deferred until their behavior is planned.
+MVP-0 is focused on proving spatial browsing. Stage 2 adds filename search and sorting for the currently open folder, plus a bounded preview for selected plain-text files. Stage 3 has verified folder creation, rename, single-file copy and move, and Move to Trash for one item on macOS. Cloud storage, filesystem watchers, recursive indexing, and permanent deletion remain deferred.
 
 ## Run locally
 

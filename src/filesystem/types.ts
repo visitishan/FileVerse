@@ -20,6 +20,11 @@ export interface DirectorySnapshot {
   truncated: boolean;
 }
 
+export interface MoveFileResult {
+  sourceParent: DirectorySnapshot;
+  destination: DirectorySnapshot;
+}
+
 export interface SidebarLocation {
   id: string;
   name: string;
@@ -40,4 +45,6 @@ export interface FilesystemPort {
   createDirectory(parentPath: string, name: string): Promise<DirectorySnapshot>;
   renameEntry(path: string, name: string): Promise<DirectorySnapshot>;
   copySelectedFile(path: string): Promise<DirectorySnapshot | null>;
+  moveSelectedFile(path: string): Promise<MoveFileResult | null>;
+  trashEntry(path: string): Promise<DirectorySnapshot>;
 }

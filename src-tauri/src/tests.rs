@@ -1,6 +1,8 @@
 use super::{
-    copy_file_into_root, create_directory_in_root, map_io_error, path_to_text, read_directory,
-    read_text_preview_file, rename_entry_in_root, DIRECTORY_LIMIT, TEXT_PREVIEW_BYTE_LIMIT,
+    copy_file_into_root, create_directory_in_root, map_io_error, move_with_hard_link,
+    path_to_text, read_directory,
+    read_text_preview_file, rename_entry_in_root, trash_entry_in_root, trash_path_with,
+    DIRECTORY_LIMIT, TEXT_PREVIEW_BYTE_LIMIT,
 };
 use std::{
     fs, io,
@@ -84,6 +86,83 @@ fn paths_outside_the_selected_root_are_rejected() {
     let error = read_directory(outside, fixture.path()).err().unwrap();
 
     assert_eq!(error, "OUTSIDE_SELECTED_ROOT");
+}
+
+#[test]
+fn trash_rejects_the_selected_root_and_paths_outside_it() {
+    let root = Fixture::new("trash-root");
+    let outside = Fixture::new("trash-outside");
+    let outside_file = outside.path().join("outside.txt");
+    fs::write(&outside_file, "keep outside").unwrap();
+
+    assert_eq!(
+        trash_entry_in_root(root.path().to_path_buf(), root.path()).err().as_deref(),
+        Some("ROOT_CANNOT_TRASH")
+    );
+    assert_eq!(
+        trash_entry_in_root(outside_file.clone(), root.path())
+            .err()
+            .as_deref(),
+        Some("OUTSIDE_SELECTED_ROOT")
+    );
+    assert!(outside_file.exists(), "rejected path must remain untouched");
+}
+
+#[test]
+fn trash_reports_missing_entries_without_changing_the_parent() {
+    let fixture = Fixture::new("trash-missing");
+    let missing = fixture.path().join("missing.txt");
+
+    assert_eq!(
+        trash_entry_in_root(missing, fixture.path()).err().as_deref(),
+        Some("NOT_FOUND")
+    );
+}
+
+#[test]
+fn trash_adapter_failure_is_reported_without_removing_the_source() {
+    let fixture = Fixture::new("trash-failure");
+    let source = fixture.path().join("keep-on-failure.txt");
+    fs::write(&source, "preserve this item").unwrap();
+
+    let result = trash_path_with(|| Err::<(), _>(io::Error::other("simulated Trash failure")));
+
+    assert_eq!(result.err().as_deref(), Some("TRASH_FAILED"));
+    assert_eq!(fs::read_to_string(source).unwrap(), "preserve this item");
+}
+
+#[test]
+fn cross_volume_move_failure_preserves_the_source_and_destination() {
+    let fixture = Fixture::new("move-cross-volume");
+    let source = fixture.path().join("source.txt");
+    let target = fixture.path().join("destination.txt");
+    fs::write(&source, "preserve on unsupported move").unwrap();
+
+    let result = move_with_hard_link(&source, &target, |_, _| {
+        Err(io::Error::from(io::ErrorKind::CrossesDevices))
+    });
+
+    assert_eq!(result.err().as_deref(), Some("MOVE_UNSUPPORTED"));
+    assert_eq!(fs::read_to_string(&source).unwrap(), "preserve on unsupported move");
+    assert!(!target.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn trash_rejects_symlinks_without_following_them() {
+    use std::os::unix::fs::symlink;
+
+    let fixture = Fixture::new("trash-symlink");
+    let target = fixture.path().join("target.txt");
+    let link = fixture.path().join("linked.txt");
+    fs::write(&target, "keep target").unwrap();
+    symlink(&target, &link).unwrap();
+
+    assert_eq!(
+        trash_entry_in_root(link, fixture.path()).err().as_deref(),
+        Some("SYMLINK_NOT_ENTERABLE")
+    );
+    assert_eq!(fs::read_to_string(target).unwrap(), "keep target");
 }
 
 #[test]

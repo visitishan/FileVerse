@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DirectorySnapshot, FilesystemPort, SidebarLocation, TextPreview } from "./types";
+import type { DirectorySnapshot, FilesystemPort, MoveFileResult, SidebarLocation, TextPreview } from "./types";
 
 export const isNativeRuntime = () => "__TAURI_INTERNALS__" in window;
 
@@ -30,5 +30,11 @@ export const tauriFilesystem: FilesystemPort = {
   },
   copySelectedFile(path: string) {
     return invoke<DirectorySnapshot | null>("copy_selected_file", { path });
+  },
+  moveSelectedFile(path: string) {
+    return invoke<MoveFileResult | null>("move_selected_file", { path });
+  },
+  trashEntry(path: string) {
+    return invoke<DirectorySnapshot>("trash_entry", { path });
   },
 };

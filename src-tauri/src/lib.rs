@@ -47,6 +47,13 @@ struct DirectorySnapshotDto {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct MoveFileResultDto {
+    source_parent: DirectorySnapshotDto,
+    destination: DirectorySnapshotDto,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SidebarLocationDto {
     id: &'static str,
     name: &'static str,
@@ -280,6 +287,47 @@ fn rename_entry(
 }
 
 #[tauri::command]
+fn trash_entry(
+    path: String,
+    state: tauri::State<'_, FilesystemState>,
+) -> Result<DirectorySnapshotDto, String> {
+    let root_guard = state
+        .selected_root
+        .lock()
+        .map_err(|_| "FILESYSTEM_ERROR".to_string())?;
+    let root = root_guard
+        .as_ref()
+        .ok_or_else(|| "ROOT_NOT_SELECTED".to_string())?;
+    trash_entry_in_root(PathBuf::from(path), root)
+}
+
+fn trash_entry_in_root(path: PathBuf, root: &Path) -> Result<DirectorySnapshotDto, String> {
+    let path = resolve_scoped_path(path, root)?;
+    if path == root {
+        return Err("ROOT_CANNOT_TRASH".into());
+    }
+    let metadata = fs::symlink_metadata(&path).map_err(|error| map_io_error(&error))?;
+    if !metadata.is_file() && !metadata.is_dir() {
+        return Err("NOT_TRASHABLE".into());
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| "INVALID_PATH".to_string())?
+        .to_path_buf();
+
+    #[cfg(target_os = "macos")]
+    trash_path_with(|| trash::delete(&path))?;
+    #[cfg(not(target_os = "macos"))]
+    return Err("TRASH_UNAVAILABLE".into());
+
+    read_directory(parent, root)
+}
+
+fn trash_path_with<E>(delete: impl FnOnce() -> Result<(), E>) -> Result<(), String> {
+    delete().map_err(|_| "TRASH_FAILED".to_string())
+}
+
+#[tauri::command]
 async fn copy_selected_file(
     path: String,
     app: tauri::AppHandle,
@@ -309,6 +357,96 @@ async fn copy_selected_file(
         .into_path()
         .map_err(|_| "UNSUPPORTED_PATH_ENCODING".to_string())?;
     copy_file_into_root(source, destination, &root).map(Some)
+}
+
+#[tauri::command]
+async fn move_selected_file(
+    path: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, FilesystemState>,
+) -> Result<Option<MoveFileResultDto>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let root = {
+        let root_guard = state
+            .selected_root
+            .lock()
+            .map_err(|_| "FILESYSTEM_ERROR".to_string())?;
+        root_guard
+            .as_ref()
+            .ok_or_else(|| "ROOT_NOT_SELECTED".to_string())?
+            .clone()
+    };
+    let source = PathBuf::from(path);
+    let selected = app
+        .dialog()
+        .file()
+        .set_directory(&root)
+        .blocking_pick_folder();
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    let destination = selected
+        .into_path()
+        .map_err(|_| "UNSUPPORTED_PATH_ENCODING".to_string())?;
+    move_file_into_root(source, destination, &root).map(Some)
+}
+
+fn move_file_into_root(
+    source: PathBuf,
+    destination: PathBuf,
+    root: &Path,
+) -> Result<MoveFileResultDto, String> {
+    let source = resolve_scoped_path(source, root)?;
+    let destination = resolve_scoped_path(destination, root)?;
+    let source_metadata = fs::symlink_metadata(&source).map_err(|error| map_io_error(&error))?;
+    if source_metadata.file_type().is_symlink() {
+        return Err("SYMLINK_NOT_ENTERABLE".into());
+    }
+    if !source_metadata.is_file() {
+        return Err("NOT_FILE".into());
+    }
+    let destination_metadata =
+        fs::symlink_metadata(&destination).map_err(|error| map_io_error(&error))?;
+    if !destination_metadata.is_dir() {
+        return Err("NOT_DIRECTORY".into());
+    }
+    let source_parent = source
+        .parent()
+        .ok_or_else(|| "INVALID_PATH".to_string())?
+        .to_path_buf();
+    let file_name = source.file_name().ok_or_else(|| "NOT_FILE".to_string())?;
+    let target = destination.join(file_name);
+
+    // A hard-link-then-unlink move cannot overwrite a destination created
+    // concurrently. It also fails safely across filesystems or where hard
+    // links are unsupported, leaving the source untouched.
+    move_with_hard_link(&source, &target, |source, target| {
+        fs::hard_link(source, target)
+    })?;
+
+    Ok(MoveFileResultDto {
+        source_parent: read_directory(source_parent, root)?,
+        destination: read_directory(destination, root)?,
+    })
+}
+
+fn move_with_hard_link(
+    source: &Path,
+    target: &Path,
+    create_link: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
+) -> Result<(), String> {
+    create_link(source, target).map_err(|error| match error.kind() {
+        std::io::ErrorKind::AlreadyExists => "ALREADY_EXISTS".to_string(),
+        std::io::ErrorKind::CrossesDevices | std::io::ErrorKind::Unsupported => {
+            "MOVE_UNSUPPORTED".to_string()
+        }
+        _ => map_io_error(&error),
+    })?;
+    if let Err(error) = fs::remove_file(source) {
+        let _ = fs::remove_file(target);
+        return Err(map_io_error(&error));
+    }
+    Ok(())
 }
 
 fn copy_file_into_root(
@@ -594,7 +732,9 @@ pub fn run() {
             preview_text_file,
             create_directory,
             rename_entry,
-            copy_selected_file
+            copy_selected_file,
+            move_selected_file,
+            trash_entry
         ])
         .run(tauri::generate_context!())
         .expect("error while running FileVerse");

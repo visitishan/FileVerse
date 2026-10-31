@@ -24,8 +24,8 @@
 | 0. Project foundation | Product, architecture, and agent guidance are documented | Complete: specification, architecture, contributor rules, roadmap, and native smoke checklist are present |
 | 1. MVP-0 spatial prototype | See a folder's actual contents in depth, navigate into folders/back, zoom, orbit, and travel through loaded depth rows | Complete on macOS: native fixture checks and user-confirmed horizontal/diagonal trackpad gestures passed; Windows/Linux remain deferred to Stage 4 |
 | 2. File manager basics | Make browsing useful for everyday discovery | Complete on macOS: search, sorting, bounded preview, keyboard list access, and preview safety checks are recorded; Windows/Linux remain deferred to Stage 4 |
-| 3. File operations | Safely perform common local file actions | In progress: create-folder and rename slices are implemented and native-verified on macOS |
-| 4. Platform completion | Verify and adapt behavior for macOS, Windows, and Linux | Incremental, with dedicated hardening stage |
+| 3. File operations | Safely perform common local file actions | In progress: create-folder, rename, copy, same-volume single-file move, and one-file/folder Move to Trash are native-verified on macOS; Trash boundary and injected adapter-failure fixtures are covered |
+| 4. Platform completion | Verify and adapt behavior for macOS, Windows, and Linux | CI matrix configured for frontend build and Rust tests on all three runner OSes; native UI and packaging validation remains pending |
 | 5. Additional storage | Explore network and cloud locations through adapters | Only after local filesystem experience is solid |
 | 6. Advanced intelligence | Add smart organization and search where evidence supports it | Long-term exploration |
 
@@ -39,18 +39,20 @@ This is the repository's working checklist for contributor handoff. Update a row
 |---|---|---|
 | Product and technical foundation | Complete | Spec, architecture, contributor rules, and roadmap agree on the MVP-0 boundary |
 | Tauri + React/TypeScript + Three.js application | Implemented | `npm run build` passes; run on the target desktop OS before release |
-| Rust local filesystem adapter and normalized entries | Implemented; all 28 fixture tests pass for filesystem access, preview safety, and file operations | Native UI checks also passed for empty, Unicode/hidden names, restricted folder, symlink, and 301-entry truncation |
+| Rust local filesystem adapter and normalized entries | Implemented; all 33 fixture tests pass for filesystem access, preview safety, and file operations | Native UI checks also passed for empty, Unicode/hidden names, restricted folder, symlink, and 301-entry truncation |
 | Home startup, common local sidebar locations, folder open/back, and breadcrumbs | Implemented | User-confirmed in the desktop app; picker selection and cancel are also reported working; permission and selected-root boundary checks passed in the native app |
 | Spatial cards and folder-entry transition | Implemented | Manually verified during MVP-0 use; continue to assess readability with representative directories |
 | Zoom, orbit, and loaded-depth controls | Implemented; horizontal scroll orbits around the loaded-stack center, vertical scroll travels through depth, and mouse drag controls yaw/pitch | User-confirmed: horizontal and diagonal trackpad gestures work; vertical scroll and mouse drag leave the active folder unchanged |
 | macOS native behavior | Complete for Stage 1 | Native fixture checks and user-confirmed physical trackpad gestures are recorded in [`docs/MVP0_NATIVE_SMOKE_CHECKLIST.md`](docs/MVP0_NATIVE_SMOKE_CHECKLIST.md) |
-| Windows and Linux behavior | Deferred to Stage 4 | No Windows/Linux machine is currently available; do not claim platform support until checked |
+| Windows and Linux behavior | Deferred to Stage 4 | No Windows/Linux machine is currently available. A GitHub Actions matrix now checks frontend and Rust compilation on macOS, Windows, and Linux; native UI behavior still requires those platforms |
 | Stage 2 features | Complete on macOS | Search/sorting and bounded text preview are native-checked; keyboard list is reachable through Tab; preview truncation, unsupported types, binary rejection, symlink handling, and root boundary are recorded in [`docs/STAGE2_NATIVE_CHECKLIST.md`](docs/STAGE2_NATIVE_CHECKLIST.md) |
 | Stage 3 first operation: create folder | Implemented and native-verified | Disposable fixture verified successful creation and refreshed listing; cancel made no changes; invalid separators and duplicate names showed clear errors. See [`docs/STAGE3_NATIVE_CHECKLIST.md`](docs/STAGE3_NATIVE_CHECKLIST.md) |
 | Stage 3 second operation: rename | Implemented and native-verified | Disposable fixture verified file/folder rename, cancel, invalid-name rejection, and collision handling; backend also rejects root, symlink, and out-of-root paths |
 | Stage 3 third operation: copy file | Implemented and native-verified on macOS | Copies one selected regular file to a chosen folder inside the selected root, rejects symlinks and name collisions, and refreshes the destination snapshot. Recursive folder copy is out of scope. See [`docs/STAGE3_NATIVE_CHECKLIST.md`](docs/STAGE3_NATIVE_CHECKLIST.md) |
+| Stage 3 fourth operation: move file | Implemented and native-verified on macOS for the supported same-volume flow | Success, cancellation, collision preservation, symlink unavailability, and selected-root boundary are checked with a disposable fixture. An injected cross-device error verifies source preservation, but a real second-volume check remains pending. See [`docs/STAGE3_NATIVE_CHECKLIST.md`](docs/STAGE3_NATIVE_CHECKLIST.md) |
+| Stage 3 fifth operation: move to Trash | Implemented and native-verified on macOS for one file and folder | Confirmation, cancel, file/folder Trash placement, nested folder contents, source refresh, restoration notice, selected-root and symlink restrictions passed. Rust fixtures verify selected-root, out-of-root, symlink, missing-item, and injected adapter-failure behavior; the failure fixture confirms the source remains intact. Permanent deletion and in-app restore are out of scope. See [`docs/STAGE3_NATIVE_CHECKLIST.md`](docs/STAGE3_NATIVE_CHECKLIST.md) |
 
-**Where to continue:** choose and define the next Stage 3 operation before implementation. Move and delete have different safety and recovery behavior; specify the boundary, collision, confirmation, and undo expectations first. Keep cloud storage, watchers, and Windows/Linux validation deferred to their later stages.
+**Where to continue:** when a second storage volume is available, verify cross-volume Move behavior in the macOS app. Until then, Stage 3 has fixture coverage for the unsupported-device error path. Keep cloud storage, watchers, and Windows/Linux validation deferred to their later stages.
 
 ---
 
@@ -222,9 +224,9 @@ These are experiments, not commitments. Each requires a clear user problem, priv
 
 ## Immediate next actions
 
-1. Choose the next Stage 3 operation and define its safety and recovery behavior before implementation.
-2. Keep search and sorting scoped to already-loaded direct children; do not add recursive traversal or backend filesystem search.
-3. Windows/Linux validation remains deferred to Stage 4; retain the MVP-0 and Stage 2 native checklists as evidence for macOS behavior.
+1. Run the new GitHub Actions matrix and fix any platform compile/test failures it finds; green CI is a compile check, not native UI verification.
+2. Verify cross-volume Move in the native macOS app when a second storage volume is available; the injected Rust failure fixture already checks source preservation and stable error mapping.
+3. Schedule native UI smoke checks for Windows and Linux when those environments are available; retain the existing native checklists as evidence for current macOS behavior.
 
 ## Change policy
 
