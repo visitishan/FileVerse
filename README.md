@@ -4,12 +4,12 @@
 
 ## Download FileVerse
 
-The current **v0.1.0 pre-release** is available for **macOS on Apple Silicon (arm64)**:
+The latest published app download is **v0.1.0 Preview** for **macOS on Apple Silicon (arm64)**:
 
 - [Download the macOS DMG](https://github.com/visitishan/FileVerse/releases/download/v0.1.0/FileVerse_0.1.0_aarch64.dmg)
 - [View the release and its notes](https://github.com/visitishan/FileVerse/releases/tag/v0.1.0)
 
-This is an experimental build and is not notarized by Apple, so macOS may show a warning when you first open it. Windows and Linux builds are not available yet.
+This 3.13 MB experimental build is an earlier snapshot from before the Stage 3 file operations. It includes spatial browsing, current-folder search and sorting, bounded text preview, Create Folder, and Rename; it does **not** include the newer Copy, Move, or Move to Trash actions in the current `main` branch. It is ad-hoc signed and not notarized by Apple, so macOS may show a verification warning when you first open it. The release has no Windows or Linux installer, and no newer app build is currently published. GitHub's automatic source archives are source code, not app installers.
 
 ### Spatial browsing
 
@@ -27,9 +27,9 @@ These screenshots show the current native Tauri app. The browser preview uses sa
 
 ## Project status
 
-**Current milestone: Stage 3 safe local file operations — in progress.** MVP-0 spatial browsing and Stage 2 search, sorting, and bounded text preview have been checked in the macOS native app. Create Folder, Rename, single-file Copy and Move, and Move to Trash for one file or folder have passed macOS native checks against disposable fixtures. Rust fixtures also inject a cross-device Move error and verify it leaves the source intact with no destination file. Windows and Linux validation is deferred to the platform-completion milestone.
+**Current milestone: Stage 3 safe local file operations — in progress.** MVP-0 spatial browsing and Stage 2 search, sorting, and bounded text preview have been checked in the macOS native app. Create Folder, Rename, single-file Copy and Move, and Move to Trash for one file or folder have passed macOS native checks against disposable fixtures. Rust fixtures also inject cross-device Move and Trash adapter errors and verify source preservation. These newer actions are in the source branch; the published v0.1.0 download does not contain them.
 
-The [GitHub Actions workflow](./.github/workflows/ci.yml) passed its macOS, Windows, and Ubuntu frontend-build and Rust-test matrix on 2026-10-31. These checks catch build and test incompatibilities; they do not replace native UI testing on each platform.
+The [GitHub Actions workflow](./.github/workflows/ci.yml) passed its macOS, Windows, and Ubuntu frontend-build and Rust-test matrix on 2026-10-31 ([run details](https://github.com/visitishan/FileVerse/actions/runs/41188366283)). These checks catch build and test incompatibilities; they do not replace native UI testing on each platform or produce downloadable installers.
 
 | Area | Status |
 |---|---|
